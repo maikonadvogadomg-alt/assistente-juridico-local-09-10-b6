@@ -1,0 +1,269 @@
+=== CONTEXTO ===
+Projeto: Assistente45by
+Fatia: 15 de 15
+Linhas originais: 4156 até 4416
+Tipo: html
+Funções/classes: debounce, later, textareas, originalHandler, renderizacoesAba, mudarAbaComLazy, criarSistemaToast, container
+================
+
+    <div class="card">
+      <div class="card-title">✏️ Editor de Formatação</div>
+      <div class="fs11" style="line-height:1.8">
+        Na aba <strong>✏️ Editor</strong>:<br>
+        • Configure fonte, tamanho, espaçamento<br>
+        • Defina recuo e alinhamento<br>
+        • Salve como template para reutilizar<br>
+        • Exporte direto para Word formatado
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📚 Ementas Inteligentes</div>
+      <div class="fs11" style="line-height:1.8">
+        • Cadastre ementas na aba <strong>📚 Ementas</strong><br>
+        • Selecione manualmente ou use <strong>🧠 Seleção Automática</strong><br>
+        • A IA extrai apenas trechos relevantes<br>
+        • Mantém fonte original nas citações
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🌐 Acesso à Internet</div>
+      <div class="fs11" style="line-height:1.8">
+        Configure na aba <strong>🌐 Internet</strong>:<br>
+        • Ative busca automática de jurisprudência<br>
+        • Use Serper, SerpAPI ou Brave Search<br>
+        • A IA busca contexto atualizado online<br>
+        • Busque manualmente quando necessário
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">💾 Backup e Segurança</div>
+      <div class="fs11" style="line-height:1.8">
+        Na aba <strong>💾 Backup</strong>:<br>
+        • Exporte backup completo em JSON<br>
+        • Use backup criptografado para dados sensíveis<br>
+        • Integre com Google Drive ou API personalizada<br>
+        • Dados salvos automaticamente no navegador
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">⌨️ Atalhos de Teclado</div>
+      <div class="fs11" style="line-height:1.8">
+        • <strong>Ctrl/Cmd + K</strong>: Abrir configurações<br>
+        • <strong>Ctrl/Cmd + Enter</strong>: Gerar minuta<br>
+        • <strong>Ctrl/Cmd + Shift + F</strong>: Abrir filtros
+      </div>
+    </div>
+
+    <div class="card" style="background:var(--bg3);border-color:var(--amber)">
+      <div class="card-title text-amber">💡 Dicas Pro</div>
+      <div class="fs11" style="line-height:1.8">
+        • Use <strong>Prompt Global</strong> para regras específicas do seu escritório<br>
+        • Filtre documentos grandes antes de processar (economiza tokens)<br>
+        • Salve templates de formatação para cada tipo de peça<br>
+        • Use seleção inteligente de ementas para melhor fundamentação<br>
+        • Faça backup regular dos seus dados<br>
+        • Configure busca automática para minutas mais atualizadas
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🆘 Suporte</div>
+      <div class="fs11" style="line-height:1.8">
+        <strong>Versão:</strong> 2.0 Pro<br>
+        <strong>Desenvolvido para:</strong> Advogados de Minas Gerais<br>
+        <strong>Recursos:</strong> IA + Filtros + Backup + Internet + PWA<br>
+        <br>
+        <strong>Problemas comuns:</strong><br>
+        • <em>Erro de API:</em> Verifique se as chaves estão corretas<br>
+        • <em>Texto não processa:</em> Use filtros para limpar o documento<br>
+        • <em>Backup não restaura:</em> Verifique se o arquivo JSON está íntegro
+      </div>
+    </div>
+
+    <div style="height:30px"></div>
+  `;
+  
+  content.appendChild(paneAjuda);
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(criarAbaAjuda, 2500);
+});
+
+// ══════════════════════════════════════════════════════
+//  OTIMIZAÇÕES DE PERFORMANCE
+// ══════════════════════════════════════════════════════
+
+// Debounce para inputs
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+// Aplicar debounce em campos de texto
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    const textareas = document.querySelectorAll('textarea');
+    textareas.forEach(ta => {
+      if (ta.oninput) {
+        const originalHandler = ta.oninput;
+        ta.oninput = debounce(originalHandler, 500);
+      }
+    });
+  }, 3000);
+});
+
+// Lazy loading de abas
+const renderizacoesAba = new Set();
+
+const mudarAbaComLazy = window.mudarAba;
+window.mudarAba = function(id, btn) {
+  mudarAbaComLazy(id, btn);
+  
+  // Renderizar conteúdo apenas na primeira vez
+  if (!renderizacoesAba.has(id)) {
+    renderizacoesAba.add(id);
+    
+    if (id === 'ementas') renderEmentas();
+    if (id === 'templates') renderTemplates();
+    if (id === 'historico') renderHistorico();
+    if (id === 'acoes') renderAcoes();
+    if (id === 'backup') atualizarEstatisticas();
+  }
+};
+
+// ══════════════════════════════════════════════════════
+//  NOTIFICAÇÕES TOAST
+// ══════════════════════════════════════════════════════
+function criarSistemaToast() {
+  const container = document.createElement('div');
+  container.id = 'toast-container';
+  container.style.cssText = `
+    position: fixed;
+    top: 70px;
+    right: 20px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 350px;
+  `;
+  document.body.appendChild(container);
+}
+
+function mostrarToast(mensagem, tipo = 'info') {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  
+  const cores = {
+    info: 'var(--blue)',
+    success: 'var(--green)',
+    warning: 'var(--amber)',
+    error: 'var(--red)'
+  };
+  
+  const toast = document.createElement('div');
+  toast.style.cssText = `
+    background: var(--bg2);
+    border: 1px solid ${cores[tipo]};
+    border-left: 4px solid ${cores[tipo]};
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 12px;
+    color: var(--text);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    animation: slideIn 0.3s ease;
+  `;
+  toast.textContent = mensagem;
+  
+  container.appendChild(toast);
+  
+  setTimeout(() => {
+    toast.style.animation = 'slideOut 0.3s ease';
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
+
+// Adicionar animações
+const styleToast = document.createElement('style');
+styleToast.textContent = `
+  @keyframes slideIn {
+    from { transform: translateX(400px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  @keyframes slideOut {
+    from { transform: translateX(0); opacity: 1; }
+    to { transform: translateX(400px); opacity: 0; }
+  }
+`;
+document.head.appendChild(styleToast);
+
+window.addEventListener('DOMContentLoaded', criarSistemaToast);
+
+// Usar toast em operações importantes
+const copiarResultadoComToast = window.copiarResultado;
+window.copiarResultado = function() {
+  copiarResultadoComToast();
+  mostrarToast('✅ Texto copiado para a área de transferência!', 'success');
+};
+
+// ══════════════════════════════════════════════════════
+//  INICIALIZAÇÃO FINAL
+// ══════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  console.log(`
+╔═══════════════════════════════════════════════════════╗
+║                                                       ║
+║    ⚖️  ASSISTENTE JURÍDICO PRO v2.0                  ║
+║                                                       ║
+║    ✅ Editor Avançado + Templates                    ║
+║    ✅ Filtros Inteligentes + OCR                     ║
+║    ✅ Backup Completo + IndexedDB                    ║
+║    ✅ Acesso à Internet + Busca                      ║
+║    ✅ PWA Instalável                                 ║
+║    ✅ Integrações (Drive + APIs)                     ║
+║                                                       ║
+║    Desenvolvido para advogados de Minas Gerais       ║
+║                                                       ║
+╚═══════════════════════════════════════════════════════╝
+  `);
+  
+  // Verificar se é primeira vez
+  const primeiraVez = !loadLS('aj_ja_usou', false);
+  if (primeiraVez) {
+    setTimeout(() => {
+      if (confirm('👋 Bem-vindo ao Assistente Jurídico Pro!\n\nDeseja ver o guia de uso?')) {
+        const btnAjuda = document.querySelector('[onclick*="ajuda"]');
+        if (btnAjuda) btnAjuda.click();
+      }
+      saveLS('aj_ja_usou', true);
+    }, 2000);
+  }
+  
+  // Verificar atualizações de versão
+  const versaoAnterior = loadLS('aj_versao', '1.0');
+  if (versaoAnterior !== '2.0') {
+    setTimeout(() => {
+      mostrarToast('🎉 Atualizado para v2.0! Novos recursos disponíveis.', 'success');
+      saveLS('aj_versao', '2.0');
+    }, 3000);
+  }
+});
+
+console.log('✅ Parte 4/4 carregada: Internet + PWA + Finalizações');
+console.log('🎉 SISTEMA COMPLETO E FUNCIONAL!');
+
+</script>
+</body>
+</html>

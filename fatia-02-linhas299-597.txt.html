@@ -1,0 +1,298 @@
+  <div>
+    <div class="config-label">Chave de Geração da Peça (Claude / OpenAI / Groq)</div>
+    <div class="config-row">
+      <input class="inp" type="password" id="key-geracao" placeholder="sk-ant... / sk-... / gsk_..." oninput="salvarChaves()">
+      <span class="provider-tag" id="tag-geracao"></span>
+    </div>
+    <div class="config-row" style="margin-top:4px">
+      <input class="inp" type="text" id="modelo-geracao" placeholder="Modelo (ex: claude-opus-4-5, gpt-4o)" oninput="salvarChaves()">
+    </div>
+    <div class="fs10 text-muted" style="margin-top:4px">Usada para redigir a peça final com qualidade máxima.</div>
+  </div>
+
+  <div>
+    <div class="config-label">Prompt Global Customizado (Opcional)</div>
+    <textarea id="prompt-global" rows="3" placeholder="Ex: Sempre use linguagem formal mineira, cite artigos do CPC/2015, priorize jurisprudência do TJMG..." oninput="salvarPromptGlobal()"></textarea>
+    <div class="fs10 text-muted" style="margin-top:4px">Este prompt será adicionado a todas as gerações de IA. Use para definir regras específicas do seu escritório.</div>
+  </div>
+
+  <div class="row">
+    <button class="btn btn-blue" onclick="testarChaves()"><span id="test-spinner" class="spinner hidden"></span> Testar Chaves</button>
+    <button class="btn btn-ghost" onclick="limparChaves()">🗑 Remover</button>
+    <span id="test-result" class="fs11"></span>
+  </div>
+
+</div>
+
+<!-- ══ BARRA ESFORÇO ══ -->
+<div class="effort-bar">
+  <span class="effort-label text-amber" id="effort-label">⚡ Detalhado</span>
+  <input type="range" min="1" max="5" value="3" id="effort-range" oninput="atualizarEsforco()">
+  <button class="verbosity-btn" id="verbosity-btn"
+    style="border-color:#92400e55;color:var(--amber2)"
+    onclick="toggleVerbosity()">📄 Completa</button>
+</div>
+
+<!-- ══ ABAS ══ -->
+<div class="tabs">
+  <button class="tab-btn ativo" onclick="mudarAba('processar',this)">⚡ Processar</button>
+  <button class="tab-btn" onclick="mudarAba('editor',this)">✏️ Editor</button>
+  <button class="tab-btn" onclick="mudarAba('templates',this)" id="tab-templates-btn">📐 Templates</button>
+  <button class="tab-btn" onclick="mudarAba('ementas',this)" id="tab-ementas-btn">📚 Ementas</button>
+  <button class="tab-btn" onclick="mudarAba('historico',this)" id="tab-hist-btn">🕐 Histórico</button>
+  <button class="tab-btn" onclick="mudarAba('acoes',this)" id="tab-acoes-btn">🪄 Ações</button>
+</div>
+
+<!-- ══ STOP BAR ══ -->
+<div class="stop-bar hidden" id="stop-bar">
+  <button class="btn btn-red btn-full" onclick="pararTudo()">⏹ Parar geração</button>
+</div>
+
+<!-- ══ CONTEÚDO ══ -->
+<div class="content">
+
+  <!-- ─── ABA PROCESSAR ─── -->
+  <div class="tab-pane ativo" id="pane-processar">
+
+    <!-- Entrada -->
+    <div class="section-title">Texto do processo / documento</div>
+    <div class="row" style="margin-bottom:6px">
+      <button class="btn btn-ghost" onclick="document.getElementById('file-input').click()">
+        <span id="import-spinner" class="spinner hidden"></span>
+        📄 PDF / DOCX / TXT
+      </button>
+      <button class="btn btn-ghost" onclick="document.getElementById('img-input').click()">
+        🖼 Imagem (OCR)
+      </button>
+      <button class="btn btn-ghost" onclick="importarMarkdown()">
+        📝 Markdown
+      </button>
+      <button class="btn btn-ghost" id="btn-voz" onclick="toggleVoz()">🎤 Ditar</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('txt-processo').value=''; textoResumido=''">🗑</button>
+    </div>
+    <input type="file" id="file-input" class="hidden" accept=".pdf,.docx,.doc,.txt,.rtf,.md" onchange="importarArquivo(this)">
+    <input type="file" id="img-input"  class="hidden" accept="image/*" onchange="importarImagem(this)">
+    <input type="file" id="md-input"   class="hidden" accept=".md,.markdown" onchange="importarArquivoMarkdown(this)">
+    <textarea id="txt-processo" rows="6" placeholder="Cole o texto, importe PDF/DOCX/Markdown, imagem (OCR) ou dite por voz..."></textarea>
+
+    <!-- Jurisprudência -->
+    <div style="margin-top:8px">
+      <button class="btn btn-ghost fs10" onclick="toggleJuris()">📖 Jurisprudência manual (opcional) <span id="juris-arrow">▼</span></button>
+      <div id="juris-area" class="hidden" style="margin-top:6px">
+        <textarea id="txt-juris" rows="4" placeholder="Cole ementas ou precedentes — serão citados literalmente na peça..."></textarea>
+        <div class="row" style="margin-top:4px">
+          <span class="fs10 text-muted" id="ementas-sel-info"></span>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Modos -->
+    <div class="section-title">Modos</div>
+    <div class="grid3" style="margin-bottom:10px">
+      <button class="action-btn" style="border-color:#3b82f633;color:var(--blue)"
+        onclick="executar('modo-estrito')" id="btn-modo-estrito">Corrigir Texto</button>
+      <button class="action-btn" style="border-color:#8b5cf633;color:var(--purple)"
+        onclick="executar('modo-redacao')" id="btn-modo-redacao">Redação Jurídica</button>
+      <button class="action-btn" style="border-color:#d9770633;color:var(--amber2)"
+        onclick="executar('modo-interativo')" id="btn-modo-interativo">Verificar Lacunas</button>
+    </div>
+
+    <!-- Ações -->
+    <div class="section-title">Ações</div>
+    <div class="grid2" style="margin-bottom:10px" id="grid-acoes">
+      <button class="action-btn" style="border-color:var(--border);color:var(--text)" onclick="executar('resumir')"      id="btn-resumir">Resumir</button>
+      <button class="action-btn" style="border-color:var(--border);color:var(--text)" onclick="executar('revisar')"      id="btn-revisar">Revisar</button>
+      <button class="action-btn" style="border-color:var(--border);color:var(--text)" onclick="executar('refinar')"      id="btn-refinar">Refinar</button>
+      <button class="action-btn" style="border-color:var(--border);color:var(--text)" onclick="executar('simplificar')"  id="btn-simplificar">Linguagem Simples</button>
+      <button class="action-btn" style="border-color:var(--border);color:var(--text)" onclick="executar('minuta')"       id="btn-minuta">Gerar Minuta</button>
+      <button class="action-btn" style="border-color:var(--border);color:var(--text)" onclick="executar('analisar')"     id="btn-analisar">Analisar</button>
+    </div>
+
+    <!-- Ações custom (aparece se houver) -->
+    <div id="secao-acoes-custom" class="hidden">
+      <div class="section-title">Ações Personalizadas</div>
+      <div class="grid2" id="grid-acoes-custom" style="margin-bottom:10px"></div>
+    </div>
+
+    <!-- Resultado -->
+    <div id="secao-resultado" class="hidden">
+      <div class="section-title" style="margin-top:14px">Resultado</div>
+      <div class="row" style="margin-bottom:6px; flex-wrap:wrap">
+        <button class="btn btn-ghost" onclick="copiarResultado()" id="btn-copiar">📋 Copiar</button>
+        <button class="btn btn-ghost" onclick="baixarTxt()">⬇ TXT</button>
+        <button class="btn btn-ghost" onclick="baixarRtf()">⬇ RTF</button>
+        <button class="btn btn-purple" onclick="baixarWord()">⬇ Word</button>
+        <button class="btn btn-cyan" onclick="baixarMarkdown()">⬇ Markdown</button>
+        <button class="btn btn-blue" onclick="abrirTTS()">🔊 Ouvir (TTS)</button>
+        <button class="btn btn-amber" onclick="enviarParaEditor()">✏️ Editar</button>
+        <span class="badge badge-demo hidden" id="badge-demo">Demo</span>
+      </div>
+      <div class="resultado-box" id="resultado-box"></div>
+
+      <!-- TTS Controls -->
+      <div class="tts-controls hidden" id="tts-controls">
+        <button class="btn btn-green" onclick="iniciarTTS()" id="btn-tts-play">▶ Reproduzir</button>
+        <button class="btn btn-red" onclick="pararTTS()" id="btn-tts-stop">⏹ Parar</button>
+        <select id="tts-voice" onchange="salvarVozTTS()">
+          <option value="">Voz padrão</option>
+        </select>
+        <label class="fs10 text-muted">Velocidade:</label>
+        <input type="range" min="0.5" max="2" step="0.1" value="1" id="tts-rate" style="width:100px" oninput="salvarVozTTS()">
+        <span class="fs10 text-muted" id="tts-rate-label">1.0x</span>
+      </div>
+
+      <!-- Chat refinamento -->
+      <div style="margin-top:10px">
+        <button class="btn btn-ghost fs11" onclick="toggleChat()">💬 Refinar com IA <span id="chat-arrow">▼</span></button>
+        <div id="chat-area" class="hidden" style="margin-top:8px">
+          <div class="chat-msgs" id="chat-msgs"></div>
+          <div class="row" style="margin-top:6px">
+            <textarea id="chat-input" rows="2" placeholder="Ex: Adicione tutela de urgência... / Reformule o início..." style="flex:1"></textarea>
+            <button class="btn btn-amber" onclick="enviarChat()" style="align-self:flex-end">Enviar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="height:30px"></div>
+  </div>
+
+  <!-- ─── ABA EDITOR ─── -->
+  <div class="tab-pane" id="pane-editor">
+    <div class="row" style="margin-bottom:10px">
+      <div class="section-title" style="margin:0;flex:1">✏️ Editor de Formatação</div>
+      <button class="btn btn-purple" onclick="salvarComoTemplate()">💾 Salvar Template</button>
+      <button class="btn btn-amber" onclick="aplicarTemplateAtivo()">📐 Aplicar Template</button>
+    </div>
+
+    <!-- Toolbar de Formatação -->
+    <div class="editor-toolbar">
+      <select id="ed-fonte" onchange="aplicarFormatacao()">
+        <option value="Times New Roman">Times New Roman</option>
+        <option value="Arial">Arial</option>
+        <option value="Calibri">Calibri</option>
+        <option value="Georgia">Georgia</option>
+        <option value="Courier New">Courier New</option>
+      </select>
+      
+      <input type="number" id="ed-tamanho" min="8" max="72" value="12" onchange="aplicarFormatacao()" style="width:60px" placeholder="Tam">
+      
+      <div class="sep"></div>
+      
+      <button class="format-btn" onclick="toggleFormatacao('bold')" id="fmt-bold">B</button>
+      <button class="format-btn" onclick="toggleFormatacao('italic')" id="fmt-italic">I</button>
+      <button class="format-btn" onclick="toggleFormatacao('underline')" id="fmt-underline">U</button>
+      
+      <div class="sep"></div>
+      
+      <button class="format-btn" onclick="setAlinhamento('left')" id="align-left">⬅</button>
+      <button class="format-btn" onclick="setAlinhamento('center')" id="align-center">⬌</button>
+      <button class="format-btn" onclick="setAlinhamento('right')" id="align-right">➡</button>
+      <button class="format-btn" onclick="setAlinhamento('justify')" id="align-justify">⬌⬌</button>
+      
+      <div class="sep"></div>
+      
+      <label class="fs10 text-muted">Recuo:</label>
+      <input type="number" id="ed-recuo" min="0" max="10" step="0.5" value="4" onchange="aplicarFormatacao()" style="width:60px" placeholder="cm">
+      
+      <label class="fs10 text-muted">Espaço:</label>
+      <input type="number" id="ed-espacamento" min="1" max="3" step="0.1" value="1.5" onchange="aplicarFormatacao()" style="width:60px" placeholder="x">
+    </div>
+
+    <!-- Área de Edição -->
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:14px;min-height:400px" 
+         contenteditable="true" 
+         id="editor-content"
+         onkeyup="salvarEditorAuto()"
+         style="outline:none">
+      <p>Digite ou cole seu texto aqui para formatar...</p>
+    </div>
+
+    <div class="row" style="margin-top:10px">
+      <button class="btn btn-amber" onclick="gerarPecaDoEditor()">🪄 Gerar Peça com IA</button>
+      <button class="btn btn-purple" onclick="baixarEditorWord()">⬇ Exportar Word</button>
+      <button class="btn btn-cyan" onclick="baixarEditorMarkdown()">⬇ Exportar Markdown</button>
+      <button class="btn btn-ghost" onclick="limparEditor()">🗑 Limpar</button>
+    </div>
+
+    <div style="height:30px"></div>
+  </div>
+
+  <!-- ─── ABA TEMPLATES ─── -->
+  <div class="tab-pane" id="pane-templates">
+    <div class="row" style="margin-bottom:10px">
+      <div class="section-title" style="margin:0;flex:1">📐 Templates de Formatação</div>
+      <button class="btn btn-purple" onclick="abrirFormTemplate()">+ Novo</button>
+    </div>
+    <div class="fs11 text-muted" style="margin-bottom:10px">Salve configurações de formatação para reutilizar em diferentes documentos.</div>
+
+    <div id="lista-templates"></div>
+    <div style="height:20px"></div>
+  </div>
+
+  <!-- ─── ABA EMENTAS ─── -->
+  <div class="tab-pane" id="pane-ementas">
+    <div class="row" style="margin-bottom:10px">
+      <div class="section-title" style="margin:0;flex:1">📚 Biblioteca de Ementas</div>
+      <button class="btn btn-amber" onclick="abrirFormEmenta()">+ Nova</button>
+    </div>
+
+    <div id="form-ementa" class="hidden" style="background:var(--bg2);border:1px solid #d9770633;border-radius:10px;padding:12px;margin-bottom:10px">
+      <div class="config-label" id="form-ementa-titulo">Nova Ementa</div>
+      <input class="inp" type="text" id="e-titulo" placeholder="Título (ex: STJ — Responsabilidade civil)" style="width:100%;margin-bottom:6px;height:32px">
+      <input class="inp" type="text" id="e-categoria" placeholder="Categoria (STJ, STF, TRF1...)" list="cats-list" style="width:100%;margin-bottom:6px;height:32px">
+      <datalist id="cats-list">
+        <option value="STF"><option value="STJ"><option value="TRF1"><option value="TRF2">
+        <option value="TRF3"><option value="TRF4"><option value="TJMG"><option value="TJSP">
+        <option value="TRT"><option value="Súmula"><option value="Doutrina">
+      </datalist>
+      <textarea id="e-texto" rows="5" placeholder="Cole a ementa completa..."></textarea>
+      <div class="row" style="margin-top:6px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="fecharFormEmenta()">Cancelar</button>
+        <button class="btn btn-amber" onclick="salvarEmenta()">💾 Salvar</button>
+      </div>
+    </div>
+
+    <input class="inp" type="text" id="busca-ementa" placeholder="🔍 Buscar ementas..." style="width:100%;margin-bottom:8px" oninput="renderEmentas()">
+
+    <div id="lista-ementas"></div>
+    <div style="height:20px"></div>
+  </div>
+
+  <!-- ─── ABA HISTÓRICO ─── -->
+  <div class="tab-pane" id="pane-historico">
+    <div class="row" style="margin-bottom:10px">
+      <div class="section-title" style="margin:0;flex:1">🕐 Histórico</div>
+      <button class="btn btn-ghost fs11" onclick="limparHistorico()">🗑 Limpar</button>
+    </div>
+    <div id="lista-historico"></div>
+    <div style="height:20px"></div>
+  </div>
+
+  <!-- ─── ABA AÇÕES ─── -->
+  <div class="tab-pane" id="pane-acoes">
+    <div class="row" style="margin-bottom:10px">
+      <div class="section-title" style="margin:0;flex:1">🪄 Ações Personalizadas</div>
+      <button class="btn btn-purple" onclick="abrirFormAcao()">+ Nova</button>
+    </div>
+    <div class="fs11 text-muted" style="margin-bottom:10px">Crie instruções personalizadas. Aparecem na aba Processar.</div>
+
+    <div id="form-acao" class="hidden" style="background:var(--bg2);border:1px solid #8b5cf633;border-radius:10px;padding:12px;margin-bottom:10px">
+      <div class="config-label" id="form-acao-titulo">Nova Ação</div>
+      <input class="inp" type="text" id="ca-label" placeholder="Nome (ex: Petição Inicial Trabalhista)" style="width:100%;margin-bottom:6px;height:32px">
+      <input class="inp" type="text" id="ca-desc"  placeholder="Descrição curta (opcional)" style="width:100%;margin-bottom:6px;height:32px">
+      <textarea id="ca-prompt" rows="5" placeholder="Instrução para a IA. O texto do documento será adicionado automaticamente após..."></textarea>
+      <div class="row" style="margin-top:6px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="fecharFormAcao()">Cancelar</button>
+        <button class="btn btn-purple" onclick="salvarAcao()">💾 Salvar</button>
+      </div>
+    </div>
+
+    <div id="lista-acoes"></div>
+    <div style="height:20px"></div>
+  </div>
+
+</div><!-- /content -->
+</div><!-- /app -->

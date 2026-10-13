@@ -1,0 +1,291 @@
+<!-- ══ MODAL TEMPLATE ══ -->
+<div class="modal-overlay" id="modal-template">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-template-titulo">Novo Template</div>
+      <button class="modal-close" onclick="fecharModalTemplate()">×</button>
+    </div>
+    <div>
+      <div class="config-label">Nome do Template</div>
+      <input class="inp" type="text" id="tpl-nome" placeholder="Ex: Petição Inicial Padrão" style="width:100%;margin-bottom:10px">
+      
+      <div class="config-label">Descrição (opcional)</div>
+      <textarea id="tpl-desc" rows="2" placeholder="Descreva quando usar este template..." style="margin-bottom:10px"></textarea>
+      
+      <div class="fs10 text-muted" style="margin-bottom:10px">As configurações atuais do editor serão salvas neste template.</div>
+      
+      <div class="row" style="justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="fecharModalTemplate()">Cancelar</button>
+        <button class="btn btn-purple" onclick="confirmarSalvarTemplate()">💾 Salvar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+//  ESTADO GLOBAL
+// ══════════════════════════════════════════════════════
+let effortLevel  = parseInt(loadLS('aj_effort','3'));
+let verbosity    = loadLS('aj_verbosity','longa');
+let ementas      = loadLS('aj_ementas', []);
+let historico    = loadLS('aj_historico', []);
+let acoesCustom  = loadLS('aj_acoes_custom', []);
+let templates    = loadLS('aj_templates', []);
+let templateAtivo = loadLS('aj_template_ativo', null);
+let emsSelected  = new Set();
+let resultado    = '';
+let chatHistory  = [];
+let abortCtrl    = null;
+let chatAbort    = null;
+let editEmentaId = null;
+let editAcaoId   = null;
+let editTemplateId = null;
+let textoResumido = '';
+let isListening  = false;
+let recognition  = null;
+let ttsUtterance = null;
+let ttsVoices    = [];
+let formatacaoAtual = {
+  fonte: 'Times New Roman',
+  tamanho: 12,
+  bold: false,
+  italic: false,
+  underline: false,
+  alinhamento: 'justify',
+  recuo: 4,
+  espacamento: 1.5
+};
+
+// ══════════════════════════════════════════════════════
+//  LOCALSTORAGE
+// ══════════════════════════════════════════════════════
+function loadLS(k, def) {
+  try { return JSON.parse(localStorage.getItem(k)) ?? def; } catch { return def; }
+}
+function saveLS(k, v) {
+  try { localStorage.setItem(k, JSON.stringify(v)); } catch {}
+}
+
+// ══════════════════════════════════════════════════════
+//  CHAVES
+// ══════════════════════════════════════════════════════
+const PROVIDERS = [
+  ['AIza',   'Gemini'],
+  ['gsk_',   'Groq'],
+  ['sk-ant', 'Claude'],
+  ['sk-or-', 'OpenRouter'],
+  ['pplx-',  'Perplexity'],
+  ['xai-',   'xAI/Grok'],
+  ['sk-',    'OpenAI'],
+];
+function detectProvider(k) {
+  for (const [p,n] of PROVIDERS) if ((k||'').startsWith(p)) return n;
+  return null;
+}
+function getChaveResumo()  { return (document.getElementById('key-resumo').value  || '').trim(); }
+function getChaveGeracao() { return (document.getElementById('key-geracao').value || '').trim(); }
+function getModelo()       { return (document.getElementById('modelo-geracao').value || '').trim(); }
+function getPromptGlobal() { return (document.getElementById('prompt-global').value || '').trim(); }
+
+function salvarChaves() {
+  const kr = getChaveResumo(), kg = getChaveGeracao(), m = getModelo();
+  saveLS('aj_key_resumo',   kr);
+  saveLS('aj_key_geracao',  kg);
+  saveLS('aj_modelo',       m);
+  document.getElementById('tag-resumo').textContent  = detectProvider(kr) || '';
+  document.getElementById('tag-geracao').textContent = detectProvider(kg) || '';
+  atualizarBadge();
+}
+function salvarPromptGlobal() {
+  saveLS('aj_prompt_global', getPromptGlobal());
+}
+function limparChaves() {
+  ['key-resumo','key-geracao','modelo-geracao'].forEach(id => document.getElementById(id).value = '');
+  ['aj_key_resumo','aj_key_geracao','aj_modelo'].forEach(k => localStorage.removeItem(k));
+  salvarChaves();
+}
+function atualizarBadge() {
+  const kg = getChaveGeracao();
+  const badge = document.getElementById('badge-status');
+  if (kg) {
+    badge.textContent = detectProvider(kg) || 'Chave Própria';
+    badge.className = 'badge badge-ok';
+  } else {
+    badge.textContent = 'Demo';
+    badge.className = 'badge badge-demo';
+  }
+}
+
+// Carregar chaves salvas
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('key-resumo').value   = loadLS('aj_key_resumo','');
+  document.getElementById('key-geracao').value  = loadLS('aj_key_geracao','');
+  document.getElementById('modelo-geracao').value = loadLS('aj_modelo','');
+  document.getElementById('prompt-global').value = loadLS('aj_prompt_global','');
+  salvarChaves();
+  atualizarEsforco();
+  atualizarVerbosity();
+  renderEmentas();
+  renderHistorico();
+  renderAcoes();
+  renderAcoesCustomGrid();
+  renderTemplates();
+  carregarVozesTTS();
+  carregarEditor();
+  // PDF.js worker
+  if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+});
+
+// ══════════════════════════════════════════════════════
+//  TESTAR CHAVES
+// ══════════════════════════════════════════════════════
+async function testarChaves() {
+  const kr = getChaveResumo(), kg = getChaveGeracao();
+  const sp = document.getElementById('test-spinner');
+  const rt = document.getElementById('test-result');
+  sp.classList.remove('hidden'); rt.textContent = '';
+  try {
+    if (kr) {
+      await chamarGemini(kr, [{ role:'user', content:'Responda apenas: OK' }], 'gemini-1.5-flash');
+      rt.textContent = '✅ Resumo OK';
+    }
+    if (kg) {
+      const prov = detectProvider(kg);
+      let r = '';
+      if (prov === 'Gemini')      r = await chamarGemini(kg, [{role:'user',content:'Responda apenas: OK'}]);
+      else if (prov === 'Claude') r = await chamarClaude(kg, [{role:'user',content:'Responda apenas: OK'}], getModelo()||'claude-haiku-3-5');
+      else                        r = await chamarOpenAI(kg, [{role:'user',content:'Responda apenas: OK'}], getModelo()||'gpt-4o-mini');
+      rt.textContent += (kr?' | ':'') + `✅ Geração OK (${prov||'Custom'})`;
+    }
+    if (!kr && !kg) rt.textContent = '⚠️ Insira ao menos uma chave.';
+  } catch(e) {
+    rt.textContent = '❌ ' + e.message.substring(0,100);
+    rt.className = 'fs11 text-red';
+  } finally { sp.classList.add('hidden'); }
+}
+
+// ══════════════════════════════════════════════════════
+//  ESFORÇO + VERBOSIDADE
+// ══════════════════════════════════════════════════════
+const EFFORT_INFO = {
+  1: { label:'⚡ Rápido',    color:'var(--blue)',   desc:'Resposta direta e concisa' },
+  2: { label:'⚡ Básico',    color:'#22d3ee',       desc:'Pontos principais' },
+  3: { label:'⚡ Detalhado', color:'var(--amber2)', desc:'Análise completa' },
+  4: { label:'⚡ Profundo',  color:'#fb923c',       desc:'Fundamentação robusta' },
+  5: { label:'⚡ Exaustivo', color:'var(--purple)', desc:'Máximo esforço possível' },
+};
+function atualizarEsforco() {
+  effortLevel = parseInt(document.getElementById('effort-range').value);
+  const info = EFFORT_INFO[effortLevel];
+  const el = document.getElementById('effort-label');
+  el.textContent = info.label;
+  el.style.color = info.color;
+  saveLS('aj_effort', effortLevel);
+}
+function atualizarVerbosity() {
+  const btn = document.getElementById('verbosity-btn');
+  if (verbosity === 'curta') {
+    btn.textContent = '📝 Concisa';
+    btn.style.borderColor = '#3b82f655';
+    btn.style.color = 'var(--blue)';
+  } else {
+    btn.textContent = '📄 Completa';
+    btn.style.borderColor = '#92400e55';
+    btn.style.color = 'var(--amber2)';
+  }
+}
+function toggleVerbosity() {
+  verbosity = verbosity === 'curta' ? 'longa' : 'curta';
+  saveLS('aj_verbosity', verbosity);
+  atualizarVerbosity();
+}
+
+// ══════════════════════════════════════════════════════
+//  CONFIG PANEL
+// ══════════════════════════════════════════════════════
+function toggleConfig() {
+  const p = document.getElementById('config-panel');
+  const b = document.getElementById('btn-config');
+  p.classList.toggle('aberto');
+  b.classList.toggle('ativo');
+}
+
+// ══════════════════════════════════════════════════════
+//  ABAS
+// ══════════════════════════════════════════════════════
+function mudarAba(id, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('ativo'));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('ativo'));
+  btn.classList.add('ativo');
+  document.getElementById('pane-' + id).classList.add('ativo');
+}
+
+// ══════════════════════════════════════════════════════
+//  IMPORTAR ARQUIVO
+// ══════════════════════════════════════════════════════
+async function importarArquivo(input) {
+  const file = input.files[0]; input.value = '';
+  if (!file) return;
+  const sp = document.getElementById('import-spinner');
+  sp.classList.remove('hidden');
+  try {
+    const ext = file.name.split('.').pop().toLowerCase();
+    let texto = '';
+    if (ext === 'pdf') {
+      texto = await extrairPDF(file);
+    } else if (ext === 'docx' || ext === 'doc') {
+      texto = await extrairDOCX(file);
+    } else if (ext === 'md' || ext === 'markdown') {
+      texto = await file.text();
+    } else {
+      texto = await file.text();
+    }
+    if (!texto.trim()) throw new Error('Arquivo sem texto legível.');
+    const ta = document.getElementById('txt-processo');
+    ta.value = ta.value ? ta.value + '\n\n' + texto : texto;
+  } catch(e) { alert('Erro ao importar: ' + e.message); }
+  finally { sp.classList.add('hidden'); }
+}
+
+async function extrairPDF(file) {
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  let texto = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    texto += content.items.map(it => it.str).join(' ') + '\n';
+  }
+  return texto;
+}
+
+async function extrairDOCX(file) {
+  const buf = await file.arrayBuffer();
+  const result = await mammoth.extractRawText({ arrayBuffer: buf });
+  return result.value;
+}
+
+// ══════════════════════════════════════════════════════
+//  MARKDOWN
+// ══════════════════════════════════════════════════════
+function importarMarkdown() {
+  document.getElementById('md-input').click();
+}
+async function importarArquivoMarkdown(input) {
+  const file = input.files[0]; input.value = '';
+  if (!file) return;
+  try {
+    const texto = await file.text();
+    const ta = document.getElementById('txt-processo');
+    ta.value = ta.value ? ta.value + '\n\n' + texto : texto;
+  } catch(e) { alert('Erro ao importar Markdown: ' + e.message); }
+}
+function baixarMarkdown() {
+  if (!resultado) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([resultado], { type: 'text/markdown;charset=utf-8' }));
+  a.download = `juridico-${Date.now()}.md`;
+  a.click();
+}

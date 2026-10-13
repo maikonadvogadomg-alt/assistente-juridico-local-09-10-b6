@@ -4,6 +4,8 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
+    "desktop": "electron .",
+    "exe": "electron-builder --win portable --publish never",
     "iniciar": "node scripts/iniciar.mjs",
     "dev": "tsx server/index.ts",
     "build": "vite build",
@@ -65,12 +67,15 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "date-fns": "^3.6.0",
+    "diff": "^9.0.0",
     "docx": "^9.5.1",
     "drizzle-orm": "^0.39.3",
     "drizzle-zod": "^0.7.1",
+    "electron-vite": "^5.0.0",
     "embla-carousel-react": "^8.6.0",
-    "express": "^5.0.1",
+    "express": "^5.3.0",
     "express-session": "^1.18.1",
+    "express-ws": "^5.0.2",
     "framer-motion": "^11.13.1",
     "html-entities": "^2.6.0",
     "input-otp": "^1.4.2",
@@ -81,6 +86,7 @@
     "msedge-tts": ">=1.3.4",
     "multer": "^2.0.2",
     "next-themes": "^0.4.6",
+    "nodemon": "^3.1.14",
     "openai": "^6.18.0",
     "p-limit": "^7.3.0",
     "p-retry": "^7.1.1",
@@ -96,15 +102,21 @@
     "react-icons": "^5.4.0",
     "react-resizable-panels": "^2.1.7",
     "recharts": "^2.15.2",
+    "require": "^2.4.20",
+    "sqlit": "^2.0.0",
+    "start": "^5.1.0",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.21.0",
     "tw-animate-css": "^1.2.5",
     "vaul": "^1.1.2",
+    "vite-node": "^6.0.0",
     "wouter": "^3.3.5",
     "ws": "^8.18.0",
     "zod": "^3.25.76",
-    "zod-validation-error": "^3.5.4"
+    "zod-validation-error": "^3.5.4",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/android": "^7.0.0"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.15",
@@ -119,11 +131,34 @@
     "@types/ws": "^8.5.13",
     "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.4.20",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
     "esbuild": "^0.25.0",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.17",
     "typescript": "5.6.3",
-    "vite": "^7.3.0"
+    "vite": "^7.3.0",
+    "@capacitor/cli": "^7.0.0"
   },
-  "description": "Assistente Jurídico — rodando no seu PC, sem Replit, sem Neon."
+  "description": "Assistente Jurídico — rodando no seu PC, sem Replit, sem Neon.",
+  "author": "sss",
+  "main": "electron/main.cjs",
+  "build": {
+    "appId": "com.app.sss",
+    "productName": "sss",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "**/*",
+      "!android/**",
+      "!.github/**",
+      "!dist-electron/**",
+      "!*.zip",
+      "!.sk/**"
+    ],
+    "win": {
+      "target": "portable"
+    }
+  }
 }

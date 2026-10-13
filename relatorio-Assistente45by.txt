@@ -1,0 +1,71 @@
+RELATÓRIO DE FATIAMENTO — Assistente45by
+Data: 13/10/2026, 05:51:40
+Total de linhas: 4.416
+Total de fatias: 15
+════════════════════════════════════════════════════════════
+
+FATIA 1: Linhas 1–298 (298 linhas)
+Tipo: html
+────────────────────────────────────────
+FATIA 2: Linhas 299–597 (299 linhas)
+Tipo: html
+────────────────────────────────────────
+FATIA 3: Linhas 598–889 (292 linhas)
+Tipo: html
+Contém: effortLevel, verbosity, ementas, historico, acoesCustom, templates, templateAtivo, emsSelected
+────────────────────────────────────────
+FATIA 4: Linhas 890–1190 (301 linhas)
+Tipo: function
+Contém: importarImagem, file, sp, worker, ta, toggleVoz, SR, fullText
+────────────────────────────────────────
+FATIA 5: Linhas 1191–1485 (295 linhas)
+Tipo: function
+Contém: atualizarResultado, box, renderResultado, box, blocks, t, p, lines
+────────────────────────────────────────
+FATIA 6: Linhas 1486–1769 (284 linhas)
+Tipo: html
+Contém: tpl, fecharModalTemplate, confirmarSalvarTemplate, nome, desc, config, deletarTemplate, ativarTemplate
+────────────────────────────────────────
+FATIA 7: Linhas 1770–2063 (294 linhas)
+Tipo: html
+Contém: abrirFormAcao, form, titulo, a, fecharFormAcao, salvarAcao, label, desc
+────────────────────────────────────────
+FATIA 8: Linhas 2064–2363 (300 linhas)
+Tipo: html
+Contém: adicionarRegexPreset, presets, campo, textarea, valor, novoValor, limparTexto, resultado
+────────────────────────────────────────
+FATIA 9: Linhas 2364–2662 (299 linhas)
+Tipo: function
+Contém: msgs, trechoExtraido, executarOriginal, texto, kr, kg, emsTexto, ementasProcessadas
+────────────────────────────────────────
+FATIA 10: Linhas 2663–2963 (301 linhas)
+Tipo: html
+Contém: listarDoDB, transaction, store, request, deletarDoDB, transaction, store, request
+────────────────────────────────────────
+FATIA 11: Linhas 2964–3259 (296 linhas)
+Tipo: function
+Contém: importarBackup, file, texto, backup, criptografar, key, encrypted, descriptografar
+────────────────────────────────────────
+FATIA 12: Linhas 3260–3560 (301 linhas)
+Tipo: html
+Contém: salvarConfigAPI, url, header, method, testarAPICustom, url, header, headers
+────────────────────────────────────────
+FATIA 13: Linhas 3561–3858 (298 linhas)
+Tipo: html
+Contém: carregarConfigInternet, provider, apiKey, customUrl, toggle, autoSearch, jurisprudencia, numResults
+────────────────────────────────────────
+FATIA 14: Linhas 3859–4155 (297 linhas)
+Tipo: html
+Contém: contextoBusca, termosChave, queryBusca, resultados, kr, kg, emsTexto, ementasProcessadas
+────────────────────────────────────────
+FATIA 15: Linhas 4156–4416 (261 linhas)
+Tipo: html
+Contém: debounce, later, textareas, originalHandler, renderizacoesAba, mudarAbaComLazy, criarSistemaToast, container
+────────────────────────────────────────
+npm install
+npm start            # Abre o app em modo desenvolvimento
+
+npm install
+npm run build:win    # Gera .exe para Windows
+npm run build:linux  # Gera .AppImage para Linux
+npm run build:mac    # Gera .dmg para Mac (precisa de Mac)

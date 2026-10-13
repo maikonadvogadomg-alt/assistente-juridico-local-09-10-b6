@@ -1,0 +1,283 @@
+  if (id) {
+    const tpl = templates.find(t => t.id === id);
+    document.getElementById('tpl-nome').value = tpl.nome;
+    document.getElementById('tpl-desc').value = tpl.descricao || '';
+    titulo.textContent = 'Editar Template';
+  } else {
+    document.getElementById('tpl-nome').value = '';
+    document.getElementById('tpl-desc').value = '';
+    titulo.textContent = 'Novo Template';
+  }
+  
+  modal.classList.add('aberto');
+}
+
+function fecharModalTemplate() {
+  document.getElementById('modal-template').classList.remove('aberto');
+  editTemplateId = null;
+}
+
+function confirmarSalvarTemplate() {
+  const nome = document.getElementById('tpl-nome').value.trim();
+  if (!nome) { alert('Digite um nome para o template.'); return; }
+  
+  const desc = document.getElementById('tpl-desc').value.trim();
+  const config = { ...formatacaoAtual };
+  
+  if (editTemplateId) {
+    templates = templates.map(t => t.id === editTemplateId ? { ...t, nome, descricao: desc, config } : t);
+  } else {
+    templates.push({
+      id: Date.now().toString(),
+      nome,
+      descricao: desc,
+      config,
+      criadoEm: new Date().toLocaleString('pt-BR')
+    });
+  }
+  
+  saveLS('aj_templates', templates);
+  fecharModalTemplate();
+  renderTemplates();
+}
+
+function deletarTemplate(id) {
+  if (!confirm('Remover este template?')) return;
+  templates = templates.filter(t => t.id !== id);
+  if (templateAtivo === id) {
+    templateAtivo = null;
+    saveLS('aj_template_ativo', null);
+  }
+  saveLS('aj_templates', templates);
+  renderTemplates();
+}
+
+function ativarTemplate(id) {
+  templateAtivo = id;
+  saveLS('aj_template_ativo', id);
+  renderTemplates();
+}
+
+function aplicarTemplateAtivo() {
+  if (!templateAtivo) { alert('Selecione um template primeiro.'); return; }
+  const tpl = templates.find(t => t.id === templateAtivo);
+  if (!tpl) return;
+  
+  formatacaoAtual = { ...tpl.config };
+  
+  document.getElementById('ed-fonte').value = formatacaoAtual.fonte;
+  document.getElementById('ed-tamanho').value = formatacaoAtual.tamanho;
+  document.getElementById('ed-recuo').value = formatacaoAtual.recuo;
+  document.getElementById('ed-espacamento').value = formatacaoAtual.espacamento;
+  
+  ['bold','italic','underline'].forEach(t => {
+    document.getElementById(`fmt-${t}`).classList.toggle('ativo', formatacaoAtual[t]);
+  });
+  
+  ['left','center','right','justify'].forEach(a => {
+    document.getElementById(`align-${a}`).classList.toggle('ativo', a === formatacaoAtual.alinhamento);
+  });
+  
+  aplicarFormatacao();
+  alert(`Template "${tpl.nome}" aplicado!`);
+}
+
+function renderTemplates() {
+  const lista = document.getElementById('lista-templates');
+  lista.innerHTML = '';
+  
+  document.getElementById('tab-templates-btn').textContent = 
+    `📐 Templates${templates.length ? ` (${templates.length})` : ''}`;
+  
+  if (!templates.length) {
+    lista.innerHTML = '<div class="text-muted fs12" style="text-align:center;padding:20px">Nenhum template salvo. Configure o editor e clique em "💾 Salvar Template".</div>';
+    return;
+  }
+  
+  templates.forEach(tpl => {
+    const ativo = tpl.id === templateAtivo;
+    const div = document.createElement('div');
+    div.className = 'card' + (ativo ? ' card-selected' : '');
+    div.innerHTML = `
+      <div class="row" style="justify-content:space-between;margin-bottom:4px">
+        <span class="card-title" style="margin:0">${ativo ? '✓ ' : ''}${tpl.nome}</span>
+        <div class="row" style="gap:4px">
+          <button class="btn-icon" onclick="ativarTemplate('${tpl.id}')" title="Ativar">⭐</button>
+          <button class="btn-icon" onclick="abrirFormTemplate('${tpl.id}')" title="Editar">✏️</button>
+          <button class="btn-icon" onclick="deletarTemplate('${tpl.id}')" title="Remover">🗑</button>
+        </div>
+      </div>
+      ${tpl.descricao ? `<div class="card-sub" style="margin-bottom:6px">${tpl.descricao}</div>` : ''}
+      <div class="fs10 text-muted">
+        Fonte: ${tpl.config.fonte} ${tpl.config.tamanho}pt | 
+        Recuo: ${tpl.config.recuo}cm | 
+        Espaço: ${tpl.config.espacamento}x | 
+        Alinhamento: ${tpl.config.alinhamento}
+      </div>
+      <button class="btn btn-purple" style="margin-top:8px" onclick="aplicarTemplate('${tpl.id}')">▶ Aplicar</button>`;
+    lista.appendChild(div);
+  });
+}
+
+function aplicarTemplate(id) {
+  ativarTemplate(id);
+  aplicarTemplateAtivo();
+}
+
+// ══════════════════════════════════════════════════════
+//  EMENTAS
+// ══════════════════════════════════════════════════════
+function abrirFormEmenta(id) {
+  editEmentaId = id || null;
+  const form = document.getElementById('form-ementa');
+  const titulo = document.getElementById('form-ementa-titulo');
+  if (id) {
+    const em = ementas.find(e => e.id === id);
+    document.getElementById('e-titulo').value    = em.titulo;
+    document.getElementById('e-categoria').value = em.categoria;
+    document.getElementById('e-texto').value     = em.texto;
+    titulo.textContent = 'Editar Ementa';
+  } else {
+    document.getElementById('e-titulo').value    = '';
+    document.getElementById('e-categoria').value = '';
+    document.getElementById('e-texto').value     = '';
+    titulo.textContent = 'Nova Ementa';
+  }
+  form.classList.remove('hidden');
+}
+function fecharFormEmenta() {
+  document.getElementById('form-ementa').classList.add('hidden');
+  editEmentaId = null;
+}
+function salvarEmenta() {
+  const titulo    = document.getElementById('e-titulo').value.trim();
+  const categoria = document.getElementById('e-categoria').value.trim();
+  const texto     = document.getElementById('e-texto').value.trim();
+  if (!titulo || !texto) { alert('Preencha título e texto.'); return; }
+  if (editEmentaId) {
+    ementas = ementas.map(e => e.id === editEmentaId ? { ...e, titulo, categoria, texto } : e);
+  } else {
+    ementas.push({ id: Date.now().toString(), titulo, categoria, texto, criadoEm: new Date().toLocaleString('pt-BR') });
+  }
+  saveLS('aj_ementas', ementas);
+  fecharFormEmenta();
+  renderEmentas();
+  atualizarTabEmentas();
+}
+function deletarEmenta(id) {
+  if (!confirm('Remover esta ementa?')) return;
+  ementas = ementas.filter(e => e.id !== id);
+  emsSelected.delete(id);
+  saveLS('aj_ementas', ementas);
+  renderEmentas();
+  atualizarTabEmentas();
+  atualizarInfoEmentas();
+}
+function toggleEmenta(id) {
+  emsSelected.has(id) ? emsSelected.delete(id) : emsSelected.add(id);
+  renderEmentas();
+  atualizarInfoEmentas();
+}
+function atualizarInfoEmentas() {
+  const info = document.getElementById('ementas-sel-info');
+  if (emsSelected.size > 0)
+    info.textContent = `${emsSelected.size} ementa(s) selecionada(s) — serão incluídas na próxima geração`;
+  else info.textContent = '';
+}
+function atualizarTabEmentas() {
+  document.getElementById('tab-ementas-btn').textContent =
+    `📚 Ementas${ementas.length ? ` (${ementas.length})` : ''}`;
+}
+function renderEmentas() {
+  const busca = (document.getElementById('busca-ementa')?.value || '').toLowerCase();
+  const lista = document.getElementById('lista-ementas');
+  lista.innerHTML = '';
+  const filtradas = ementas.filter(e =>
+    !busca || e.titulo.toLowerCase().includes(busca) ||
+    e.texto.toLowerCase().includes(busca) ||
+    e.categoria.toLowerCase().includes(busca)
+  );
+  if (!filtradas.length) {
+    lista.innerHTML = '<div class="text-muted fs12" style="text-align:center;padding:20px">' +
+      (ementas.length ? 'Nenhum resultado.' : 'Nenhuma ementa salva. Clique em "+ Nova" para começar.') + '</div>';
+    return;
+  }
+  filtradas.forEach(em => {
+    const sel = emsSelected.has(em.id);
+    const div = document.createElement('div');
+    div.className = 'card' + (sel ? ' card-selected' : '');
+    div.innerHTML = `
+      <div class="row" style="align-items:flex-start;gap:8px">
+        <div class="ementa-check ${sel ? 'marcado' : ''}" onclick="toggleEmenta('${em.id}')">
+          ${sel ? '✓' : ''}
+        </div>
+        <div style="flex:1;min-width:0">
+          <div class="row" style="gap:6px;flex-wrap:wrap">
+            <span class="card-title" style="margin:0">${em.titulo}</span>
+            ${em.categoria ? `<span class="badge" style="background:#1e3a5f33;color:var(--blue);border-color:#3b82f633">${em.categoria}</span>` : ''}
+          </div>
+          <div class="card-sub" style="margin-top:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${em.texto}</div>
+        </div>
+        <div class="row" style="gap:4px;flex-shrink:0">
+          <button class="btn-icon" onclick="abrirFormEmenta('${em.id}')" title="Editar">✏️</button>
+          <button class="btn-icon" onclick="deletarEmenta('${em.id}')" title="Remover">🗑</button>
+        </div>
+      </div>`;
+    lista.appendChild(div);
+  });
+  atualizarTabEmentas();
+}
+
+// ══════════════════════════════════════════════════════
+//  HISTÓRICO
+// ══════════════════════════════════════════════════════
+function limparHistorico() {
+  if (!confirm('Limpar todo o histórico?')) return;
+  historico = []; saveLS('aj_historico', historico);
+  renderHistorico();
+}
+function renderHistorico() {
+  const lista = document.getElementById('lista-historico');
+  lista.innerHTML = '';
+  document.getElementById('tab-hist-btn').textContent =
+    `🕐 Histórico${historico.length ? ` (${historico.length})` : ''}`;
+  if (!historico.length) {
+    lista.innerHTML = '<div class="text-muted fs12" style="text-align:center;padding:20px">Nenhum documento gerado ainda.</div>';
+    return;
+  }
+  historico.forEach(h => {
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.innerHTML = `
+      <div class="row" style="justify-content:space-between;margin-bottom:4px">
+        <span class="card-title" style="margin:0">${h.acao}</span>
+        <span class="fs10 text-muted">${h.timestamp}</span>
+      </div>
+      <div class="card-sub" style="margin-bottom:8px">${h.inputSnippet}...</div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">
+        <button class="btn btn-amber" onclick="restaurarHistorico('${h.id}')">▶ Restaurar</button>
+        <button class="btn btn-ghost" onclick="copiarHistorico('${h.id}')">📋 Copiar</button>
+        <button class="btn btn-ghost" onclick="deletarHistorico('${h.id}')">🗑</button>
+      </div>
+      <details style="margin-top:8px">
+        <summary class="fs10 text-muted" style="cursor:pointer">Ver resultado...</summary>
+        <div class="fs11 text-muted" style="margin-top:6px;white-space:pre-wrap;max-height:120px;overflow-y:auto;border-top:1px solid var(--border);padding-top:6px">${h.resultado.substring(0,600)}${h.resultado.length>600?'...':''}</div>
+      </details>`;
+    lista.appendChild(div);
+  });
+}
+function restaurarHistorico(id) {
+  const h = historico.find(x => x.id === id); if (!h) return;
+  resultado = h.resultado;
+  renderResultado(h.resultado);
+  mudarAba('processar', document.querySelector('.tab-btn'));
+}
+function copiarHistorico(id) {
+  const h = historico.find(x => x.id === id); if (!h) return;
+  navigator.clipboard.writeText(h.resultado);
+}
+function deletarHistorico(id) {
+  historico = historico.filter(x => x.id !== id);
+  saveLS('aj_historico', historico);
+  renderHistorico();
+}

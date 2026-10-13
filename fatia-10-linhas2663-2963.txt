@@ -1,0 +1,308 @@
+=== CONTEXTO ===
+Projeto: Assistente45by
+Fatia: 10 de 15
+Linhas originais: 2663 até 2963
+Tipo: html
+Funções/classes: listarDoDB, transaction, store, request, deletarDoDB, transaction, store, request
+================
+
+async function listarDoDB(storeName) {
+  if (!db) await initDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([storeName], 'readonly');
+    const store = transaction.objectStore(storeName);
+    const request = store.getAll();
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function deletarDoDB(storeName, key) {
+  if (!db) await initDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([storeName], 'readwrite');
+    const store = transaction.objectStore(storeName);
+    const request = store.delete(key);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+// Auto-save para IndexedDB
+let autoSaveTimer = null;
+function agendarAutoSave() {
+  if (autoSaveTimer) clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(async () => {
+    try {
+      await sincronizarComDB();
+      console.log('✅ Auto-save realizado');
+    } catch(e) {
+      console.error('Erro no auto-save:', e);
+    }
+  }, 3000);
+}
+
+async function sincronizarComDB() {
+  if (!db) await initDB();
+  
+  // Salvar ementas
+  for (const ementa of ementas) {
+    await salvarNoDB('ementas', ementa);
+  }
+  
+  // Salvar templates
+  for (const template of templates) {
+    await salvarNoDB('templates', template);
+  }
+  
+  // Salvar histórico
+  for (const item of historico) {
+    await salvarNoDB('historico', item);
+  }
+  
+  // Salvar configurações
+  await salvarNoDB('config', { key: 'filtros', value: filtrosAtivos });
+  await salvarNoDB('config', { key: 'formatacao', value: formatacaoAtual });
+  await salvarNoDB('config', { key: 'acoes_custom', value: acoesCustom });
+}
+
+async function carregarDoDB() {
+  if (!db) await initDB();
+  
+  try {
+    // Carregar ementas
+    const ementasDB = await listarDoDB('ementas');
+    if (ementasDB.length > 0) {
+      ementas = ementasDB;
+      saveLS('aj_ementas', ementas);
+    }
+    
+    // Carregar templates
+    const templatesDB = await listarDoDB('templates');
+    if (templatesDB.length > 0) {
+      templates = templatesDB;
+      saveLS('aj_templates', templates);
+    }
+    
+    // Carregar histórico
+    const historicoDB = await listarDoDB('historico');
+    if (historicoDB.length > 0) {
+      historico = historicoDB;
+      saveLS('aj_historico', historico);
+    }
+    
+    // Carregar configurações
+    const configFiltros = await lerDoDB('config', 'filtros');
+    if (configFiltros) {
+      filtrosAtivos = configFiltros.value;
+      saveLS('aj_filtros', filtrosAtivos);
+    }
+    
+    const configAcoes = await lerDoDB('config', 'acoes_custom');
+    if (configAcoes) {
+      acoesCustom = configAcoes.value;
+      saveLS('aj_acoes_custom', acoesCustom);
+    }
+    
+    console.log('✅ Dados carregados do IndexedDB');
+  } catch(e) {
+    console.error('Erro ao carregar do DB:', e);
+  }
+}
+
+// Inicializar DB ao carregar
+window.addEventListener('DOMContentLoaded', async () => {
+  await initDB();
+  await carregarDoDB();
+  renderEmentas();
+  renderTemplates();
+  renderHistorico();
+  renderAcoes();
+  criarAbaBackup();
+});
+
+// ══════════════════════════════════════════════════════
+//  ABA DE BACKUP E CONFIGURAÇÕES
+// ══════════════════════════════════════════════════════
+function criarAbaBackup() {
+  // Adicionar aba
+  const tabsContainer = document.querySelector('.tabs');
+  const btnBackup = document.createElement('button');
+  btnBackup.className = 'tab-btn';
+  btnBackup.id = 'tab-backup-btn';
+  btnBackup.textContent = '💾 Backup';
+  btnBackup.onclick = function() { mudarAba('backup', this); };
+  tabsContainer.appendChild(btnBackup);
+  
+  // Criar painel
+  const content = document.querySelector('.content');
+  const paneBackup = document.createElement('div');
+  paneBackup.className = 'tab-pane';
+  paneBackup.id = 'pane-backup';
+  paneBackup.innerHTML = `
+    <div class="section-title">💾 Backup e Restauração</div>
+    <div class="fs11 text-muted" style="margin-bottom:16px">
+      Exporte todos os seus dados (ementas, templates, histórico, configurações) em um único arquivo.
+      Importe posteriormente para restaurar tudo.
+    </div>
+
+    <!-- Backup Completo -->
+    <div class="card">
+      <div class="card-title text-amber">📦 Backup Completo</div>
+      <div class="fs11 text-muted" style="margin-bottom:10px">
+        Inclui: Ementas, Templates, Histórico, Ações Personalizadas, Filtros e Configurações.
+      </div>
+      <div class="row" style="gap:6px">
+        <button class="btn btn-amber" onclick="exportarBackupCompleto()">
+          ⬇ Exportar Backup (.json)
+        </button>
+        <button class="btn btn-ghost" onclick="document.getElementById('import-backup').click()">
+          ⬆ Importar Backup
+        </button>
+        <input type="file" id="import-backup" class="hidden" accept=".json" onchange="importarBackup(this)">
+      </div>
+      
+      <div class="row" style="margin-top:10px;gap:6px">
+        <button class="btn btn-purple" onclick="exportarBackupCriptografado()">
+          🔐 Exportar Criptografado
+        </button>
+        <button class="btn btn-ghost" onclick="document.getElementById('import-backup-cripto').click()">
+          🔓 Importar Criptografado
+        </button>
+        <input type="file" id="import-backup-cripto" class="hidden" accept=".enc" onchange="importarBackupCriptografado(this)">
+      </div>
+    </div>
+
+    <!-- Estatísticas -->
+    <div class="section-title">📊 Estatísticas de Uso</div>
+    <div class="card" style="background:var(--bg3)">
+      <div class="row" style="gap:20px;flex-wrap:wrap">
+        <div>
+          <div class="fs10 text-muted">Ementas</div>
+          <div class="fs14 text-amber" id="stat-ementas-count">0</div>
+        </div>
+        <div>
+          <div class="fs10 text-muted">Templates</div>
+          <div class="fs14 text-purple" id="stat-templates-count">0</div>
+        </div>
+        <div>
+          <div class="fs10 text-muted">Histórico</div>
+          <div class="fs14 text-blue" id="stat-historico-count">0</div>
+        </div>
+        <div>
+          <div class="fs10 text-muted">Ações Custom</div>
+          <div class="fs14 text-green" id="stat-acoes-count">0</div>
+        </div>
+        <div>
+          <div class="fs10 text-muted">Espaço Usado</div>
+          <div class="fs14 text-cyan" id="stat-espaco">0 KB</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Integrações -->
+    <div class="section-title">🔗 Integrações e APIs</div>
+    
+    <div class="card">
+      <div class="card-title text-blue">☁️ Google Drive</div>
+      <div class="fs11 text-muted" style="margin-bottom:10px">
+        Configure para enviar documentos automaticamente para o Google Drive.
+      </div>
+      <input class="inp" type="text" id="api-drive-folder" placeholder="ID da pasta do Drive" style="width:100%;margin-bottom:6px">
+      <input class="inp" type="password" id="api-drive-token" placeholder="Token de acesso OAuth2" style="width:100%;margin-bottom:6px">
+      <div class="row" style="gap:6px">
+        <button class="btn btn-blue" onclick="testarDrive()">🧪 Testar Conexão</button>
+        <button class="btn btn-ghost" onclick="salvarConfigDrive()">💾 Salvar</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title text-cyan">🌐 API Personalizada</div>
+      <div class="fs11 text-muted" style="margin-bottom:10px">
+        Configure uma API REST personalizada para enviar documentos.
+      </div>
+      <input class="inp" type="text" id="api-custom-url" placeholder="URL da API (ex: https://api.seuservidor.com/docs)" style="width:100%;margin-bottom:6px">
+      <input class="inp" type="text" id="api-custom-header" placeholder="Header de autenticação (ex: Bearer seu-token)" style="width:100%;margin-bottom:6px">
+      <select id="api-custom-method" class="inp" style="width:100%;margin-bottom:6px">
+        <option value="POST">POST</option>
+        <option value="PUT">PUT</option>
+      </select>
+      <div class="row" style="gap:6px">
+        <button class="btn btn-cyan" onclick="testarAPICustom()">🧪 Testar API</button>
+        <button class="btn btn-ghost" onclick="salvarConfigAPI()">💾 Salvar</button>
+      </div>
+    </div>
+
+    <!-- Exportações Individuais -->
+    <div class="section-title">📤 Exportações Individuais</div>
+    <div class="grid2">
+      <button class="btn btn-ghost" onclick="exportarEmentas()">📚 Exportar Ementas</button>
+      <button class="btn btn-ghost" onclick="exportarTemplates()">📐 Exportar Templates</button>
+      <button class="btn btn-ghost" onclick="exportarHistorico()">🕐 Exportar Histórico</button>
+      <button class="btn btn-ghost" onclick="exportarAcoes()">🪄 Exportar Ações</button>
+    </div>
+
+    <!-- Limpeza -->
+    <div class="section-title">🗑️ Limpeza de Dados</div>
+    <div class="card" style="border-color:var(--red)">
+      <div class="card-title text-red">⚠️ Zona de Perigo</div>
+      <div class="fs11 text-muted" style="margin-bottom:10px">
+        Estas ações são irreversíveis. Faça backup antes!
+      </div>
+      <div class="row" style="gap:6px;flex-wrap:wrap">
+        <button class="btn btn-red" onclick="limparTodosDados()">🗑 Limpar Todos os Dados</button>
+        <button class="btn btn-ghost" onclick="limparCache()">🧹 Limpar Cache</button>
+        <button class="btn btn-ghost" onclick="resetarConfiguracoes()">🔄 Resetar Configurações</button>
+      </div>
+    </div>
+
+    <div style="height:30px"></div>
+  `;
+  
+  content.appendChild(paneBackup);
+  atualizarEstatisticas();
+}
+
+// ══════════════════════════════════════════════════════
+//  FUNÇÕES DE BACKUP
+// ══════════════════════════════════════════════════════
+async function exportarBackupCompleto() {
+  try {
+    const backup = {
+      versao: '2.0',
+      timestamp: new Date().toISOString(),
+      dados: {
+        ementas: ementas,
+        templates: templates,
+        historico: historico,
+        acoesCustom: acoesCustom,
+        filtros: filtrosAtivos,
+        formatacao: formatacaoAtual,
+        chaves: {
+          resumo: loadLS('aj_key_resumo', ''),
+          geracao: loadLS('aj_key_geracao', ''),
+          modelo: loadLS('aj_modelo', ''),
+          promptGlobal: loadLS('aj_prompt_global', '')
+        },
+        config: {
+          effort: effortLevel,
+          verbosity: verbosity,
+          templateAtivo: templateAtivo
+        }
+      }
+    };
+    
+    const json = JSON.stringify(backup, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `backup-assistente-juridico-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    alert('✅ Backup exportado com sucesso!');
+  } catch(e) {
+    alert('❌ Erro ao exportar backup: ' + e.message);
+  }
+}

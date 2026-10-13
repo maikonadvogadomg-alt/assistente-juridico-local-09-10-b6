@@ -1,12 +1,21 @@
-// service-worker.js — gerado pelo Mini SK em 13/10/2026, 16:34:49
+// service-worker.js — gerado pelo Mini SK em 13/10/2026, 18:20:26
 // Não precisa mexer: ele guarda sozinho o que o app usa.
-const PREFIXO = 'sk-assistente-juridico-local-09-1-';
-const CACHE = PREFIXO + 'mv72ydue';
+const PREFIXO = 'sk-sss-';
+const CACHE = PREFIXO + 'mv76q81b';
 // Lista feita automaticamente (para funcionar sem internet logo após instalar)
 const GUARDAR = [
   "./",
   "./.env.exemplo",
   "./.npmrc",
+  "./android/app/build.gradle",
+  "./android/app/src/main/AndroidManifest.xml",
+  "./android/app/src/main/java/app/minisk/shell/MainActivity.java",
+  "./android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png",
+  "./android/build.gradle",
+  "./android/gradle.properties",
+  "./android/release.keystore",
+  "./android/settings.gradle",
+  "./apk.config.json",
   "./client/404.html",
   "./client/favicon.ico",
   "./client/icons/apple-touch-icon.png",
@@ -113,6 +122,20 @@ const GUARDAR = [
   "./client/src/pages/token-generator.tsx",
   "./client/src/pages/tramitacao.tsx",
   "./components.json",
+  "./fatia-02-linhas299-597.txt.html",
+  "./fatia-03-linhas598-889.txt.html",
+  "./fatia-04-linhas890-1190.txt.js",
+  "./fatia-05-linhas1191-1485.txt.js",
+  "./fatia-06-linhas1486-1769.txt.html",
+  "./fatia-07-linhas1770-2063.txt.html",
+  "./fatia-08-linhas2064-2363.txt.html",
+  "./fatia-09-linhas2364-2662.txt",
+  "./fatia-10-linhas2663-2963.txt",
+  "./fatia-11-linhas2964-3259.txt",
+  "./fatia-12-linhas3260-3560.txt",
+  "./fatia-13-linhas3561-3858.txt",
+  "./fatia-14-linhas3859-4155.txt",
+  "./fatia-15-linhas4156-4416.txt",
   "./favicon.ico",
   "./icons/apple-touch-icon.png",
   "./icons/icon-16.png",
@@ -132,6 +155,7 @@ const GUARDAR = [
   "./icons/maskable-512.png",
   "./icons/maskable.svg",
   "./index.html",
+  "./Index.html",
   "./iniciar.bat",
   "./iniciar.sh",
   "./LEIA-ME.md",
@@ -142,6 +166,7 @@ const GUARDAR = [
   "./package.json",
   "./postcss.config.js",
   "./public/auditoria.html",
+  "./relatorio-Assistente45by.txt",
   "./scripts/abrir-pronto.mjs",
   "./scripts/iniciar.mjs",
   "./server/db.ts",

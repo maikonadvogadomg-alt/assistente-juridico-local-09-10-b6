@@ -1,0 +1,294 @@
+
+// ══════════════════════════════════════════════════════
+//  AÇÕES CUSTOMIZADAS
+// ══════════════════════════════════════════════════════
+function abrirFormAcao(id) {
+  editAcaoId = id || null;
+  const form = document.getElementById('form-acao');
+  const titulo = document.getElementById('form-acao-titulo');
+  if (id) {
+    const a = acoesCustom.find(x => x.id === id);
+    document.getElementById('ca-label').value  = a.label;
+    document.getElementById('ca-desc').value   = a.descricao;
+    document.getElementById('ca-prompt').value = a.prompt;
+    titulo.textContent = 'Editar Ação';
+  } else {
+    document.getElementById('ca-label').value  = '';
+    document.getElementById('ca-desc').value   = '';
+    document.getElementById('ca-prompt').value = '';
+    titulo.textContent = 'Nova Ação';
+  }
+  form.classList.remove('hidden');
+}
+function fecharFormAcao() {
+  document.getElementById('form-acao').classList.add('hidden');
+  editAcaoId = null;
+}
+function salvarAcao() {
+  const label  = document.getElementById('ca-label').value.trim();
+  const desc   = document.getElementById('ca-desc').value.trim();
+  const prompt = document.getElementById('ca-prompt').value.trim();
+  if (!label || !prompt) { alert('Preencha nome e prompt.'); return; }
+  if (editAcaoId) {
+    acoesCustom = acoesCustom.map(a => a.id === editAcaoId ? { ...a, label, descricao:desc, prompt } : a);
+  } else {
+    acoesCustom.push({ id: Date.now().toString(), label, descricao:desc, prompt });
+  }
+  saveLS('aj_acoes_custom', acoesCustom);
+  fecharFormAcao();
+  renderAcoes();
+  renderAcoesCustomGrid();
+}
+function deletarAcao(id) {
+  if (!confirm('Remover esta ação?')) return;
+  acoesCustom = acoesCustom.filter(a => a.id !== id);
+  saveLS('aj_acoes_custom', acoesCustom);
+  renderAcoes();
+  renderAcoesCustomGrid();
+}
+function renderAcoes() {
+  const lista = document.getElementById('lista-acoes');
+  lista.innerHTML = '';
+  document.getElementById('tab-acoes-btn').textContent =
+    `🪄 Ações${acoesCustom.length ? ` (${acoesCustom.length})` : ''}`;
+  if (!acoesCustom.length) {
+    lista.innerHTML = '<div class="text-muted fs12" style="text-align:center;padding:20px">Nenhuma ação personalizada. Clique em "+ Nova" para criar.</div>';
+    return;
+  }
+  acoesCustom.forEach(a => {
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.innerHTML = `
+      <div class="row" style="justify-content:space-between;margin-bottom:4px">
+        <span class="card-title text-purple" style="margin:0">🪄 ${a.label}</span>
+        <div class="row" style="gap:4px">
+          <button class="btn-icon" onclick="abrirFormAcao('${a.id}')">✏️</button>
+          <button class="btn-icon" onclick="deletarAcao('${a.id}')">🗑</button>
+        </div>
+      </div>
+      ${a.descricao ? `<div class="card-sub" style="margin-bottom:6px">${a.descricao}</div>` : ''}
+      <details>
+        <summary class="fs10 text-muted" style="cursor:pointer">Ver prompt...</summary>
+        <div class="fs11 text-muted" style="margin-top:6px;white-space:pre-wrap;border-top:1px solid var(--border);padding-top:6px">${a.prompt}</div>
+      </details>
+      <button class="btn btn-purple" style="margin-top:8px" onclick="executarAcaoCustom('${a.id}')">▶ Executar</button>`;
+    lista.appendChild(div);
+  });
+}
+function renderAcoesCustomGrid() {
+  const grid = document.getElementById('grid-acoes-custom');
+  const secao = document.getElementById('secao-acoes-custom');
+  grid.innerHTML = '';
+  if (!acoesCustom.length) { secao.classList.add('hidden'); return; }
+  secao.classList.remove('hidden');
+  acoesCustom.forEach(a => {
+    const btn = document.createElement('button');
+    btn.className = 'action-btn';
+    btn.style.cssText = 'border-color:#8b5cf633;color:var(--purple)';
+    btn.textContent = '🪄 ' + a.label;
+    btn.title = a.descricao || '';
+    btn.onclick = () => executarAcaoCustom(a.id);
+    grid.appendChild(btn);
+  });
+}
+function executarAcaoCustom(id) {
+  const a = acoesCustom.find(x => x.id === id); if (!a) return;
+  executar(id, a.prompt);
+}
+// ══════════════════════════════════════════════════════
+//  PARTE 2/4 - PROCESSAMENTO INTELIGENTE DE DOCUMENTOS
+// ══════════════════════════════════════════════════════
+
+// ── ESTADO GLOBAL PARTE 2 ──
+let textoOriginal = '';
+let textoFiltrado = '';
+let textoExcluido = '';
+let filtrosAtivos = {
+  regexManter: [],
+  regexExcluir: [],
+  nomesManter: [],
+  nomesExcluir: [],
+  limparOCR: true,
+  limparMarkdown: true
+};
+
+// ══════════════════════════════════════════════════════
+//  ADICIONAR ABA DE FILTROS (adicione ao HTML manualmente ou via JS)
+// ══════════════════════════════════════════════════════
+// NOTA: Como não posso modificar o HTML anterior, vou criar dinamicamente
+
+window.addEventListener('DOMContentLoaded', () => {
+  // Adicionar aba de Filtros
+  const tabsContainer = document.querySelector('.tabs');
+  const btnFiltros = document.createElement('button');
+  btnFiltros.className = 'tab-btn';
+  btnFiltros.id = 'tab-filtros-btn';
+  btnFiltros.textContent = '🔍 Filtros';
+  btnFiltros.onclick = function() { mudarAba('filtros', this); };
+  
+  // Inserir após a aba "Processar"
+  tabsContainer.insertBefore(btnFiltros, tabsContainer.children[1]);
+  
+  // Criar painel de filtros
+  const content = document.querySelector('.content');
+  const paneFiltros = document.createElement('div');
+  paneFiltros.className = 'tab-pane';
+  paneFiltros.id = 'pane-filtros';
+  paneFiltros.innerHTML = `
+    <div class="row" style="margin-bottom:10px">
+      <div class="section-title" style="margin:0;flex:1">🔍 Processamento e Filtros Avançados</div>
+      <button class="btn btn-amber" onclick="aplicarFiltros()">▶ Aplicar Filtros</button>
+    </div>
+    
+    <div class="fs11 text-muted" style="margin-bottom:10px">
+      Configure filtros para limpar e processar documentos antes de enviar para a IA. 
+      Economize tokens removendo informações irrelevantes.
+    </div>
+
+    <!-- Limpeza Automática -->
+    <div class="card">
+      <div class="card-title">🧹 Limpeza Automática</div>
+      <div class="row" style="margin-top:8px;gap:10px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="filtro-ocr" checked onchange="salvarFiltros()">
+          <span class="fs11">Limpar sujeiras de OCR (caracteres estranhos, espaços múltiplos)</span>
+        </label>
+      </div>
+      <div class="row" style="margin-top:6px;gap:10px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="filtro-markdown" checked onchange="salvarFiltros()">
+          <span class="fs11">Limpar códigos Markdown (##, **, __, etc)</span>
+        </label>
+      </div>
+      <div class="row" style="margin-top:6px;gap:10px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="filtro-certificados" checked onchange="salvarFiltros()">
+          <span class="fs11">Remover certificados digitais e assinaturas eletrônicas</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Filtros por Regex -->
+    <div class="section-title">📝 Filtros por Regex</div>
+    <div class="card">
+      <div class="card-title text-green">✅ Manter apenas linhas que correspondem</div>
+      <div class="fs10 text-muted" style="margin-bottom:6px">
+        Digite expressões regex (uma por linha). Apenas linhas que corresponderem serão mantidas.
+      </div>
+      <textarea id="regex-manter" rows="3" placeholder="Ex: ^EMENTA.*\n^ACÓRDÃO.*\n.*responsabilidade civil.*" oninput="salvarFiltros()"></textarea>
+      <div class="row" style="margin-top:6px;gap:4px">
+        <button class="btn btn-ghost fs10" onclick="adicionarRegexPreset('manter','ementa')">+ Ementas</button>
+        <button class="btn btn-ghost fs10" onclick="adicionarRegexPreset('manter','acordao')">+ Acórdãos</button>
+        <button class="btn btn-ghost fs10" onclick="adicionarRegexPreset('manter','sentenca')">+ Sentenças</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:8px">
+      <div class="card-title text-red">❌ Excluir linhas que correspondem</div>
+      <div class="fs10 text-muted" style="margin-bottom:6px">
+        Digite expressões regex (uma por linha). Linhas que corresponderem serão removidas.
+      </div>
+      <textarea id="regex-excluir" rows="3" placeholder="Ex: ^Página \\d+.*\n^Documento assinado.*\n.*certificado digital.*" oninput="salvarFiltros()"></textarea>
+      <div class="row" style="margin-top:6px;gap:4px">
+        <button class="btn btn-ghost fs10" onclick="adicionarRegexPreset('excluir','pagina')">+ Nº Páginas</button>
+        <button class="btn btn-ghost fs10" onclick="adicionarRegexPreset('excluir','certificado')">+ Certificados</button>
+        <button class="btn btn-ghost fs10" onclick="adicionarRegexPreset('excluir','cabecalho')">+ Cabeçalhos</button>
+      </div>
+    </div>
+
+    <!-- Filtros por Nome/Termo -->
+    <div class="section-title">🏷️ Filtros por Termo</div>
+    <div class="card">
+      <div class="card-title text-green">✅ Manter apenas parágrafos contendo</div>
+      <input class="inp" type="text" id="termos-manter" placeholder="Ex: EMENTA, ACÓRDÃO, SENTENÇA (separados por vírgula)" style="width:100%" oninput="salvarFiltros()">
+    </div>
+
+    <div class="card" style="margin-top:8px">
+      <div class="card-title text-red">❌ Excluir parágrafos contendo</div>
+      <input class="inp" type="text" id="termos-excluir" placeholder="Ex: Documento assinado, Certificado digital, Página (separados por vírgula)" style="width:100%" oninput="salvarFiltros()">
+    </div>
+
+    <hr class="divider">
+
+    <!-- Preview -->
+    <div class="section-title">👁️ Visualização</div>
+    <div class="row" style="margin-bottom:8px">
+      <button class="btn btn-green" onclick="verTextoMantido()">✅ Ver Mantido</button>
+      <button class="btn btn-red" onclick="verTextoExcluido()">❌ Ver Excluído</button>
+      <button class="btn btn-ghost" onclick="exportarFiltrado()">⬇ Exportar Filtrado</button>
+      <button class="btn btn-amber" onclick="usarFiltradoNaIA()">🪄 Usar na IA</button>
+    </div>
+
+    <div id="preview-filtros" class="resultado-box" style="min-height:200px;max-height:400px;overflow-y:auto">
+      <div class="text-muted fs11" style="text-align:center;padding:40px">
+        Configure os filtros acima e clique em "▶ Aplicar Filtros" para processar o documento.
+      </div>
+    </div>
+
+    <!-- Estatísticas -->
+    <div class="card" style="margin-top:10px;background:var(--bg3)">
+      <div class="row" style="gap:20px;flex-wrap:wrap">
+        <div>
+          <div class="fs10 text-muted">Original</div>
+          <div class="fs12 text-amber" id="stat-original">0 caracteres</div>
+        </div>
+        <div>
+          <div class="fs10 text-muted">Mantido</div>
+          <div class="fs12 text-green" id="stat-mantido">0 caracteres</div>
+        </div>
+        <div>
+          <div class="fs10 text-muted">Excluído</div>
+          <div class="fs12 text-red" id="stat-excluido">0 caracteres</div>
+        </div>
+        <div>
+          <div class="fs10 text-muted">Redução</div>
+          <div class="fs12 text-purple" id="stat-reducao">0%</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="height:30px"></div>
+  `;
+  
+  // Inserir após o pane-processar
+  content.insertBefore(paneFiltros, content.children[1]);
+  
+  // Carregar filtros salvos
+  carregarFiltros();
+});
+
+// ══════════════════════════════════════════════════════
+//  FUNÇÕES DE FILTROS
+// ══════════════════════════════════════════════════════
+function carregarFiltros() {
+  const filtrosSalvos = loadLS('aj_filtros', {});
+  
+  if (filtrosSalvos.regexManter) document.getElementById('regex-manter').value = filtrosSalvos.regexManter.join('\n');
+  if (filtrosSalvos.regexExcluir) document.getElementById('regex-excluir').value = filtrosSalvos.regexExcluir.join('\n');
+  if (filtrosSalvos.termosManter) document.getElementById('termos-manter').value = filtrosSalvos.termosManter.join(', ');
+  if (filtrosSalvos.termosExcluir) document.getElementById('termos-excluir').value = filtrosSalvos.termosExcluir.join(', ');
+  
+  document.getElementById('filtro-ocr').checked = filtrosSalvos.limparOCR !== false;
+  document.getElementById('filtro-markdown').checked = filtrosSalvos.limparMarkdown !== false;
+  document.getElementById('filtro-certificados').checked = filtrosSalvos.limparCertificados !== false;
+}
+
+function salvarFiltros() {
+  const regexManter = document.getElementById('regex-manter').value.split('\n').filter(Boolean);
+  const regexExcluir = document.getElementById('regex-excluir').value.split('\n').filter(Boolean);
+  const termosManter = document.getElementById('termos-manter').value.split(',').map(t => t.trim()).filter(Boolean);
+  const termosExcluir = document.getElementById('termos-excluir').value.split(',').map(t => t.trim()).filter(Boolean);
+  
+  const filtros = {
+    regexManter,
+    regexExcluir,
+    termosManter,
+    termosExcluir,
+    limparOCR: document.getElementById('filtro-ocr').checked,
+    limparMarkdown: document.getElementById('filtro-markdown').checked,
+    limparCertificados: document.getElementById('filtro-certificados').checked
+  };
+  
+  saveLS('aj_filtros', filtros);
+  filtrosAtivos = filtros;
+}

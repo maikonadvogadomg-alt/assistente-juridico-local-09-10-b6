@@ -1,0 +1,304 @@
+=== CONTEXTO ===
+Projeto: Assistente45by
+Fatia: 14 de 15
+Linhas originais: 3859 até 4155
+Tipo: html
+Funções/classes: contextoBusca, termosChave, queryBusca, resultados, kr, kg, emsTexto, ementasProcessadas
+================
+
+  // Se internet ativa e auto-search, buscar contexto
+  let contextoBusca = '';
+  if (internetAtivo && apiInternetConfig.autoSearch && (acao === 'minuta' || acao === 'modo-redacao')) {
+    try {
+      atualizarResultado('🌐 Buscando jurisprudência online...');
+      
+      // Extrair termos-chave do texto
+      const termosChave = texto.substring(0, 500).match(/\b[A-ZÁÉÍÓÚÃÕ][a-záéíóúãõ]+(?:\s+[a-záéíóúãõ]+){1,3}\b/g)?.slice(0, 3).join(' ') || '';
+      const queryBusca = `jurisprudência ${termosChave}`.substring(0, 100);
+      
+      const resultados = await buscarNaInternet(queryBusca);
+      
+      if (resultados.length > 0) {
+        contextoBusca = '\n\n---\nCONTEXTO DA INTERNET (jurisprudência e informações atualizadas):\n' +
+          resultados.map(r => `• ${r.titulo}\n  ${r.snippet}\n  Fonte: ${r.url}`).join('\n\n');
+      }
+    } catch(e) {
+      console.error('Erro na busca automática:', e);
+    }
+  }
+
+  const kr = getChaveResumo();
+  const kg = getChaveGeracao();
+
+  // Processar ementas selecionadas
+  let emsTexto = '';
+  if (emsSelected.size > 0 && kr) {
+    atualizarResultado('⏳ Extraindo trechos relevantes das ementas...');
+    
+    const ementasProcessadas = [];
+    for (const id of emsSelected) {
+      const em = ementas.find(e => e.id === id);
+      if (em) {
+        const trechoRelevante = await extrairTrechosRelevantes(em, texto);
+        ementasProcessadas.push(`[${em.titulo} — ${em.categoria}]\n${trechoRelevante}\nFonte: ${em.titulo}`);
+      }
+    }
+    emsTexto = ementasProcessadas.join('\n\n');
+  } else if (emsSelected.size > 0) {
+    emsTexto = [...emsSelected].map(id => {
+      const em = ementas.find(e => e.id === id);
+      return em ? `[${em.titulo} — ${em.categoria}]\n${em.texto}` : '';
+    }).filter(Boolean).join('\n\n');
+  }
+
+  const jurisManual = document.getElementById('txt-juris').value.trim();
+  const jurisFull = [jurisManual, emsTexto, contextoBusca].filter(Boolean).join('\n\n');
+
+  setLoading(true);
+  document.getElementById('badge-demo').classList.add('hidden');
+
+  try {
+    let textoFinal = texto;
+
+    if (kr && texto.length > 1500) {
+      atualizarResultado('⏳ Limpando e resumindo o texto com Gemini...');
+      const resumoMsgs = [
+        { role: 'system', content: 'Você é um assistente jurídico. Resuma o texto abaixo de forma objetiva, mantendo todos os fatos relevantes, partes, pedidos, decisões e fundamentos legais. Elimine cabeçalhos de página, rodapés, certificados digitais e repetições.' },
+        { role: 'user', content: texto }
+      ];
+      textoFinal = await chamarGemini(kr, resumoMsgs, 'gemini-1.5-flash');
+      textoResumido = textoFinal;
+    }
+
+    const promptSistema = buildPromptSistema(acao, customPrompt);
+    const userContent = jurisFull
+      ? `${textoFinal}\n\n---\nJURISPRUDÊNCIA E EMENTAS PARA CITAR (use apenas os trechos relevantes, mantendo as fontes):\n${jurisFull}`
+      : textoFinal;
+
+    const msgs = [
+      { role: 'system', content: promptSistema },
+      { role: 'user', content: userContent }
+    ];
+
+    let resposta = '';
+    if (kg) {
+      atualizarResultado('⏳ Gerando peça...');
+      resposta = await chamarIA(kg, msgs);
+    } else {
+      if (kr) {
+        atualizarResultado('⏳ Gerando (modo demo com Gemini)...');
+        resposta = await chamarGemini(kr, msgs, 'gemini-1.5-flash');
+        document.getElementById('badge-demo').classList.remove('hidden');
+      } else {
+        atualizarResultado('⚠️ Configure ao menos uma chave de API em ⚙️ Configurações.');
+        setLoading(false);
+        return;
+      }
+    }
+
+    resultado = resposta;
+    renderResultado(resposta);
+    chatHistory = [
+      { role: 'system', content: 'Você é um advogado consultor jurídico experiente de Minas Gerais. Responda de forma direta e técnica.' },
+      { role: 'user', content: `O documento gerado foi:\n\n${resposta}` },
+      { role: 'assistant', content: 'Entendido. Estou pronto para refinar.' }
+    ];
+
+    const labelAcao = customPrompt
+      ? (acoesCustom.find(a => a.id === acao)?.label || 'Ação Custom')
+      : ({ resumir:'Resumir', revisar:'Revisar', refinar:'Refinar', simplificar:'Linguagem Simples', minuta:'Gerar Minuta', analisar:'Analisar', 'modo-estrito':'Corrigir Texto', 'modo-redacao':'Redação Jurídica', 'modo-interativo':'Verificar Lacunas' }[acao] || acao);
+    historico = [{ id: Date.now().toString(), acao: labelAcao, inputSnippet: texto.substring(0,120), resultado: resposta, timestamp: new Date().toLocaleString('pt-BR') }, ...historico].slice(0,15);
+    saveLS('aj_historico', historico);
+    renderHistorico();
+
+  } catch(e) {
+    if (e.name === 'AbortError') return;
+    atualizarResultado('❌ Erro: ' + e.message);
+  } finally {
+    setLoading(false);
+  }
+};
+
+// ══════════════════════════════════════════════════════
+//  PWA - SERVICE WORKER E MANIFEST
+// ══════════════════════════════════════════════════════
+function instalarPWA() {
+  // Criar manifest.json dinamicamente
+  const manifest = {
+    name: 'Assistente Jurídico Pro',
+    short_name: 'AJ Pro',
+    description: 'Assistente jurídico avançado com IA, filtros inteligentes e backup completo',
+    start_url: '.',
+    display: 'standalone',
+    background_color: '#141c0d',
+    theme_color: '#d97706',
+    orientation: 'any',
+    icons: [
+      {
+        src: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect fill="%23d97706" width="100" height="100"/><text y="75" font-size="70" fill="white" text-anchor="middle" x="50">⚖️</text></svg>',
+        sizes: '512x512',
+        type: 'image/svg+xml',
+        purpose: 'any maskable'
+      }
+    ]
+  };
+  
+  const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+  const manifestURL = URL.createObjectURL(manifestBlob);
+  
+  const link = document.createElement('link');
+  link.rel = 'manifest';
+  link.href = manifestURL;
+  document.head.appendChild(link);
+  
+  // Service Worker inline
+  if ('serviceWorker' in navigator) {
+    const swCode = `
+      const CACHE_NAME = 'aj-pro-v2';
+      const urlsToCache = ['/'];
+      
+      self.addEventListener('install', event => {
+        event.waitUntil(
+          caches.open(CACHE_NAME).then(cache => cache.addAll(urlsToCache))
+        );
+      });
+      
+      self.addEventListener('fetch', event => {
+        event.respondWith(
+          caches.match(event.request).then(response => response || fetch(event.request))
+        );
+      });
+    `;
+    
+    const blob = new Blob([swCode], { type: 'application/javascript' });
+    const swURL = URL.createObjectURL(blob);
+    
+    navigator.serviceWorker.register(swURL).then(() => {
+      console.log('✅ PWA instalado');
+    }).catch(err => {
+      console.error('Erro ao registrar SW:', err);
+    });
+  }
+}
+
+// Instalar PWA ao carregar
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(instalarPWA, 1000);
+});
+
+// ══════════════════════════════════════════════════════
+//  MELHORIAS VISUAIS E UX
+// ══════════════════════════════════════════════════════
+
+// Adicionar tooltip helper
+function criarTooltip() {
+  const style = document.createElement('style');
+  style.textContent = `
+    [data-tooltip] {
+      position: relative;
+      cursor: help;
+    }
+    [data-tooltip]:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 6px 10px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 10px;
+      white-space: nowrap;
+      z-index: 1000;
+      margin-bottom: 5px;
+      color: var(--text);
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+window.addEventListener('DOMContentLoaded', criarTooltip);
+
+// Adicionar loading overlay global
+function criarLoadingOverlay() {
+  const overlay = document.createElement('div');
+  overlay.id = 'loading-overlay';
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.8);
+    backdrop-filter: blur(4px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    flex-direction: column;
+    gap: 16px;
+  `;
+  overlay.innerHTML = `
+    <div class="spinner" style="width:48px;height:48px;border-width:4px"></div>
+    <div id="loading-text" style="color:var(--text);font-size:14px;font-weight:600"></div>
+  `;
+  document.body.appendChild(overlay);
+}
+
+function mostrarLoading(texto) {
+  const overlay = document.getElementById('loading-overlay');
+  const loadingText = document.getElementById('loading-text');
+  if (overlay && loadingText) {
+    loadingText.textContent = texto;
+    overlay.style.display = 'flex';
+  }
+}
+
+function ocultarLoading() {
+  const overlay = document.getElementById('loading-overlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+window.addEventListener('DOMContentLoaded', criarLoadingOverlay);
+
+// ══════════════════════════════════════════════════════
+//  AJUDA E DOCUMENTAÇÃO INTEGRADA
+// ══════════════════════════════════════════════════════
+function criarAbaAjuda() {
+  const tabsContainer = document.querySelector('.tabs');
+  const btnAjuda = document.createElement('button');
+  btnAjuda.className = 'tab-btn';
+  btnAjuda.innerHTML = '❓ Ajuda';
+  btnAjuda.onclick = function() { mudarAba('ajuda', this); };
+  tabsContainer.appendChild(btnAjuda);
+  
+  const content = document.querySelector('.content');
+  const paneAjuda = document.createElement('div');
+  paneAjuda.className = 'tab-pane';
+  paneAjuda.id = 'pane-ajuda';
+  paneAjuda.innerHTML = `
+    <div class="section-title">❓ Guia de Uso</div>
+    
+    <div class="card">
+      <div class="card-title">🚀 Início Rápido</div>
+      <ol style="margin-left:20px;line-height:1.8;font-size:12px">
+        <li>Configure suas chaves de API em <strong>⚙️ Configurações</strong></li>
+        <li>Cole ou importe um documento na aba <strong>⚡ Processar</strong></li>
+        <li>Escolha uma ação (Resumir, Gerar Minuta, etc)</li>
+        <li>Aguarde a IA processar e gerar o resultado</li>
+        <li>Exporte em Word, PDF ou copie o texto</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🔍 Filtros Avançados</div>
+      <div class="fs11" style="line-height:1.8">
+        Use a aba <strong>🔍 Filtros</strong> para:<br>
+        • Limpar sujeiras de OCR e formatação<br>
+        • Filtrar por regex (manter/excluir linhas)<br>
+        • Filtrar por termos específicos<br>
+        • Visualizar o que será mantido vs excluído<br>
+        • Reduzir tokens antes de enviar para a IA
+      </div>
+    </div>

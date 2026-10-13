@@ -1,0 +1,306 @@
+=== CONTEXTO ===
+Projeto: Assistente45by
+Fatia: 9 de 15
+Linhas originais: 2364 até 2662
+Tipo: function
+Funções/classes: msgs, trechoExtraido, executarOriginal, texto, kr, kg, emsTexto, ementasProcessadas
+================
+
+EMENTA COMPLETA:
+${ementa.texto}
+
+Responda APENAS com os trechos relevantes, mantendo a formatação original.`;
+
+    const msgs = [
+      { role: 'system', content: 'Você é um assistente que extrai trechos relevantes de ementas, mantendo fidelidade ao texto original.' },
+      { role: 'user', content: prompt }
+    ];
+    
+    const trechoExtraido = await chamarGemini(kr, msgs, 'gemini-1.5-flash');
+    return trechoExtraido;
+    
+  } catch(e) {
+    console.error('Erro ao extrair trechos:', e);
+    return ementa.texto; // Fallback para texto completo
+  }
+}
+
+// Modificar a função executar para usar extração inteligente
+const executarOriginal = window.executar;
+window.executar = async function(acao, customPrompt) {
+  const texto = document.getElementById('txt-processo').value.trim();
+  if (!texto) { alert('Cole ou importe o texto do documento antes.'); return; }
+
+  const kr = getChaveResumo();
+  const kg = getChaveGeracao();
+
+  // Processar ementas selecionadas com extração inteligente
+  let emsTexto = '';
+  if (emsSelected.size > 0 && kr) {
+    atualizarResultado('⏳ Extraindo trechos relevantes das ementas...');
+    
+    const ementasProcessadas = [];
+    for (const id of emsSelected) {
+      const em = ementas.find(e => e.id === id);
+      if (em) {
+        const trechoRelevante = await extrairTrechosRelevantes(em, texto);
+        ementasProcessadas.push(`[${em.titulo} — ${em.categoria}]\n${trechoRelevante}\nFonte: ${em.titulo}`);
+      }
+    }
+    emsTexto = ementasProcessadas.join('\n\n');
+  } else if (emsSelected.size > 0) {
+    // Sem chave de resumo, usa texto completo
+    emsTexto = [...emsSelected].map(id => {
+      const em = ementas.find(e => e.id === id);
+      return em ? `[${em.titulo} — ${em.categoria}]\n${em.texto}` : '';
+    }).filter(Boolean).join('\n\n');
+  }
+
+  const jurisManual = document.getElementById('txt-juris').value.trim();
+  const jurisFull = [jurisManual, emsTexto].filter(Boolean).join('\n\n');
+
+  setLoading(true);
+  document.getElementById('badge-demo').classList.add('hidden');
+
+  try {
+    let textoFinal = texto;
+
+    // ── PASSO 1: Resumir/limpar com Gemini (se chave disponível e texto longo) ──
+    if (kr && texto.length > 1500) {
+      atualizarResultado('⏳ Limpando e resumindo o texto com Gemini...');
+      const resumoMsgs = [
+        { role: 'system', content: 'Você é um assistente jurídico. Resuma o texto abaixo de forma objetiva, mantendo todos os fatos relevantes, partes, pedidos, decisões e fundamentos legais. Elimine cabeçalhos de página, rodapés, certificados digitais e repetições.' },
+        { role: 'user', content: texto }
+      ];
+      textoFinal = await chamarGemini(kr, resumoMsgs, 'gemini-1.5-flash');
+      textoResumido = textoFinal;
+    }
+
+    // ── PASSO 2: Gerar peça com chave principal ──
+    const promptSistema = buildPromptSistema(acao, customPrompt);
+    const userContent = jurisFull
+      ? `${textoFinal}\n\n---\nJURISPRUDÊNCIA E EMENTAS PARA CITAR (use apenas os trechos relevantes, mantendo as fontes):\n${jurisFull}`
+      : textoFinal;
+
+    const msgs = [
+      { role: 'system', content: promptSistema },
+      { role: 'user', content: userContent }
+    ];
+
+    let resposta = '';
+    if (kg) {
+      atualizarResultado('⏳ Gerando peça...');
+      resposta = await chamarIA(kg, msgs);
+    } else {
+      if (kr) {
+        atualizarResultado('⏳ Gerando (modo demo com Gemini)...');
+        resposta = await chamarGemini(kr, msgs, 'gemini-1.5-flash');
+        document.getElementById('badge-demo').classList.remove('hidden');
+      } else {
+        atualizarResultado('⚠️ Configure ao menos uma chave de API em ⚙️ Configurações.');
+        setLoading(false);
+        return;
+      }
+    }
+
+    // Salvar resultado
+    resultado = resposta;
+    renderResultado(resposta);
+    chatHistory = [
+      { role: 'system', content: 'Você é um advogado consultor jurídico experiente de Minas Gerais. Responda de forma direta e técnica.' },
+      { role: 'user', content: `O documento gerado foi:\n\n${resposta}` },
+      { role: 'assistant', content: 'Entendido. Estou pronto para refinar.' }
+    ];
+
+    // Salvar no histórico
+    const labelAcao = customPrompt
+      ? (acoesCustom.find(a => a.id === acao)?.label || 'Ação Custom')
+      : ({ resumir:'Resumir', revisar:'Revisar', refinar:'Refinar', simplificar:'Linguagem Simples', minuta:'Gerar Minuta', analisar:'Analisar', 'modo-estrito':'Corrigir Texto', 'modo-redacao':'Redação Jurídica', 'modo-interativo':'Verificar Lacunas' }[acao] || acao);
+    historico = [{ id: Date.now().toString(), acao: labelAcao, inputSnippet: texto.substring(0,120), resultado: resposta, timestamp: new Date().toLocaleString('pt-BR') }, ...historico].slice(0,15);
+    saveLS('aj_historico', historico);
+    renderHistorico();
+
+  } catch(e) {
+    if (e.name === 'AbortError') return;
+    atualizarResultado('❌ Erro: ' + e.message);
+  } finally {
+    setLoading(false);
+  }
+};
+
+// ══════════════════════════════════════════════════════
+//  MELHORIAS NO OCR
+// ══════════════════════════════════════════════════════
+const importarImagemOriginal = window.importarImagem;
+window.importarImagem = async function(input) {
+  const file = input.files[0]; input.value = '';
+  if (!file) return;
+  const sp = document.getElementById('import-spinner');
+  sp.classList.remove('hidden');
+  
+  try {
+    // Criar preview
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    await new Promise(resolve => img.onload = resolve);
+    
+    // Pré-processar imagem para melhor OCR
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    
+    // Aplicar filtros para melhorar OCR
+    ctx.filter = 'contrast(1.2) brightness(1.1)';
+    ctx.drawImage(img, 0, 0);
+    
+    // Converter para blob
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    
+    // OCR com configurações otimizadas
+    const worker = await Tesseract.createWorker('por', 1, {
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          const pct = Math.round(m.progress * 100);
+          atualizarResultado(`⏳ Processando OCR... ${pct}%`);
+        }
+      }
+    });
+    
+    await worker.setParameters({
+      tessedit_pageseg_mode: Tesseract.PSM.AUTO,
+      preserve_interword_spaces: '1',
+    });
+    
+    const { data: { text, confidence } } = await worker.recognize(blob);
+    await worker.terminate();
+    
+    if (!text.trim()) throw new Error('Não foi possível extrair texto da imagem.');
+    
+    // Limpar texto automaticamente
+    let textoLimpo = text;
+    textoLimpo = textoLimpo.replace(/[�]/g, '');
+    textoLimpo = textoLimpo.replace(/\s{3,}/g, ' ');
+    textoLimpo = textoLimpo.replace(/\n{4,}/g, '\n\n');
+    
+    const ta = document.getElementById('txt-processo');
+    ta.value = ta.value ? ta.value + '\n\n' + textoLimpo : textoLimpo;
+    
+    // Mostrar confiança
+    const confPct = Math.round(confidence);
+    atualizarResultado(`✅ OCR concluído! Confiança: ${confPct}%${confPct < 80 ? ' (revise o texto)' : ''}`);
+    
+  } catch(e) { 
+    alert('Erro no OCR: ' + e.message); 
+    atualizarResultado('');
+  } finally { 
+    sp.classList.add('hidden'); 
+  }
+};
+
+// ══════════════════════════════════════════════════════
+//  ATALHOS DE TECLADO
+// ══════════════════════════════════════════════════════
+document.addEventListener('keydown', (e) => {
+  // Ctrl/Cmd + K = Abrir configurações
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    e.preventDefault();
+    toggleConfig();
+  }
+  
+  // Ctrl/Cmd + Enter = Gerar minuta
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    const abaAtiva = document.querySelector('.tab-pane.ativo');
+    if (abaAtiva && abaAtiva.id === 'pane-processar') {
+      e.preventDefault();
+      executar('minuta');
+    }
+  }
+  
+  // Ctrl/Cmd + Shift + F = Abrir filtros
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
+    e.preventDefault();
+    const btnFiltros = document.getElementById('tab-filtros-btn');
+    if (btnFiltros) btnFiltros.click();
+  }
+});
+
+console.log('✅ Parte 2/4 carregada: Processamento Inteligente + Filtros Avançados');
+// ══════════════════════════════════════════════════════
+//  PARTE 3/4 - BACKUP, PERSISTÊNCIA E INTEGRAÇÕES
+// ══════════════════════════════════════════════════════
+
+// ── INDEXEDDB SETUP ──
+let db = null;
+const DB_NAME = 'AssistenteJuridicoProDB';
+const DB_VERSION = 1;
+
+async function initDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      db = request.result;
+      resolve(db);
+    };
+    
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      
+      // Store para documentos/peças
+      if (!db.objectStoreNames.contains('documentos')) {
+        const docStore = db.createObjectStore('documentos', { keyPath: 'id', autoIncrement: true });
+        docStore.createIndex('tipo', 'tipo', { unique: false });
+        docStore.createIndex('timestamp', 'timestamp', { unique: false });
+        docStore.createIndex('tags', 'tags', { unique: false, multiEntry: true });
+      }
+      
+      // Store para ementas
+      if (!db.objectStoreNames.contains('ementas')) {
+        const ementaStore = db.createObjectStore('ementas', { keyPath: 'id' });
+        ementaStore.createIndex('categoria', 'categoria', { unique: false });
+        ementaStore.createIndex('titulo', 'titulo', { unique: false });
+      }
+      
+      // Store para templates
+      if (!db.objectStoreNames.contains('templates')) {
+        db.createObjectStore('templates', { keyPath: 'id' });
+      }
+      
+      // Store para configurações
+      if (!db.objectStoreNames.contains('config')) {
+        db.createObjectStore('config', { keyPath: 'key' });
+      }
+      
+      // Store para histórico
+      if (!db.objectStoreNames.contains('historico')) {
+        const histStore = db.createObjectStore('historico', { keyPath: 'id' });
+        histStore.createIndex('timestamp', 'timestamp', { unique: false });
+      }
+    };
+  });
+}
+
+// Funções auxiliares IndexedDB
+async function salvarNoDB(storeName, data) {
+  if (!db) await initDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([storeName], 'readwrite');
+    const store = transaction.objectStore(storeName);
+    const request = store.put(data);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function lerDoDB(storeName, key) {
+  if (!db) await initDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([storeName], 'readonly');
+    const store = transaction.objectStore(storeName);
+    const request = store.get(key);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}

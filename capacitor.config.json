@@ -1,0 +1,8 @@
+{
+  "appId": "com.app.assistentejuridico",
+  "appName": "assistente-juridico",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}

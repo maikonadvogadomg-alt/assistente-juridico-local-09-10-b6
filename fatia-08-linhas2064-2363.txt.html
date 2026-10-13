@@ -1,0 +1,300 @@
+
+function adicionarRegexPreset(tipo, preset) {
+  const presets = {
+    manter: {
+      ementa: '^EMENTA.*|^Ementa.*',
+      acordao: '^ACÓRDÃO.*|^Acórdão.*',
+      sentenca: '^SENTENÇA.*|^Sentença.*|^DECISÃO.*'
+    },
+    excluir: {
+      pagina: '^Página \\d+.*|^Pág\\. \\d+.*|^\\d+/\\d+$',
+      certificado: '.*[Cc]ertificado [Dd]igital.*|.*[Aa]ssinado eletronicamente.*|.*[Aa]ssinatura [Ee]letrônica.*',
+      cabecalho: '^PODER JUDICIÁRIO.*|^TRIBUNAL.*|^JUSTIÇA.*'
+    }
+  };
+  
+  const campo = tipo === 'manter' ? 'regex-manter' : 'regex-excluir';
+  const textarea = document.getElementById(campo);
+  const valor = textarea.value.trim();
+  const novoValor = valor ? valor + '\n' + presets[tipo][preset] : presets[tipo][preset];
+  textarea.value = novoValor;
+  salvarFiltros();
+}
+
+function limparTexto(texto) {
+  let resultado = texto;
+  
+  // Limpar OCR
+  if (filtrosAtivos.limparOCR) {
+    // Remover caracteres estranhos comuns em OCR
+    resultado = resultado.replace(/[�]/g, '');
+    resultado = resultado.replace(/\s{3,}/g, ' ');
+    resultado = resultado.replace(/\n{4,}/g, '\n\n\n');
+    resultado = resultado.replace(/[^\S\n]{2,}/g, ' ');
+  }
+  
+  // Limpar Markdown
+  if (filtrosAtivos.limparMarkdown) {
+    resultado = resultado.replace(/^#{1,6}\s+/gm, '');
+    resultado = resultado.replace(/\*\*(.+?)\*\*/g, '$1');
+    resultado = resultado.replace(/__(.+?)__/g, '$1');
+    resultado = resultado.replace(/\*(.+?)\*/g, '$1');
+    resultado = resultado.replace(/_(.+?)_/g, '$1');
+    resultado = resultado.replace(/~~(.+?)~~/g, '$1');
+    resultado = resultado.replace(/`(.+?)`/g, '$1');
+  }
+  
+  // Limpar certificados
+  if (filtrosAtivos.limparCertificados) {
+    const linhas = resultado.split('\n');
+    resultado = linhas.filter(linha => {
+      const l = linha.toLowerCase();
+      return !l.includes('certificado digital') &&
+             !l.includes('assinado eletronicamente') &&
+             !l.includes('assinatura eletrônica') &&
+             !l.includes('documento assinado digitalmente') &&
+             !/^[A-F0-9]{32,}$/.test(linha.trim());
+    }).join('\n');
+  }
+  
+  return resultado;
+}
+
+function aplicarFiltros() {
+  salvarFiltros();
+  
+  const textoProcesso = document.getElementById('txt-processo').value.trim();
+  if (!textoProcesso) {
+    alert('Cole um texto na aba Processar primeiro.');
+    return;
+  }
+  
+  textoOriginal = textoProcesso;
+  let texto = limparTexto(textoOriginal);
+  
+  const linhas = texto.split('\n');
+  let linhasMantidas = [...linhas];
+  let linhasExcluidas = [];
+  
+  // Aplicar filtros de regex para manter
+  if (filtrosAtivos.regexManter && filtrosAtivos.regexManter.length > 0) {
+    const regexs = filtrosAtivos.regexManter.map(r => {
+      try { return new RegExp(r, 'i'); } catch { return null; }
+    }).filter(Boolean);
+    
+    if (regexs.length > 0) {
+      const novasLinhasMantidas = [];
+      linhasMantidas.forEach(linha => {
+        const mantida = regexs.some(regex => regex.test(linha));
+        if (mantida) novasLinhasMantidas.push(linha);
+        else linhasExcluidas.push(linha);
+      });
+      linhasMantidas = novasLinhasMantidas;
+    }
+  }
+  
+  // Aplicar filtros de regex para excluir
+  if (filtrosAtivos.regexExcluir && filtrosAtivos.regexExcluir.length > 0) {
+    const regexs = filtrosAtivos.regexExcluir.map(r => {
+      try { return new RegExp(r, 'i'); } catch { return null; }
+    }).filter(Boolean);
+    
+    if (regexs.length > 0) {
+      const novasLinhasMantidas = [];
+      linhasMantidas.forEach(linha => {
+        const excluida = regexs.some(regex => regex.test(linha));
+        if (excluida) linhasExcluidas.push(linha);
+        else novasLinhasMantidas.push(linha);
+      });
+      linhasMantidas = novasLinhasMantidas;
+    }
+  }
+  
+  // Aplicar filtros por termo para manter
+  if (filtrosAtivos.termosManter && filtrosAtivos.termosManter.length > 0) {
+    const paragrafos = linhasMantidas.join('\n').split(/\n\n+/);
+    const paragrafosMantidos = [];
+    const paragrafosExcluidos = [];
+    
+    paragrafos.forEach(p => {
+      const mantido = filtrosAtivos.termosManter.some(termo => 
+        p.toLowerCase().includes(termo.toLowerCase())
+      );
+      if (mantido) paragrafosMantidos.push(p);
+      else paragrafosExcluidos.push(p);
+    });
+    
+    linhasMantidas = paragrafosMantidos.join('\n\n').split('\n');
+    linhasExcluidas.push(...paragrafosExcluidos.join('\n\n').split('\n'));
+  }
+  
+  // Aplicar filtros por termo para excluir
+  if (filtrosAtivos.termosExcluir && filtrosAtivos.termosExcluir.length > 0) {
+    const paragrafos = linhasMantidas.join('\n').split(/\n\n+/);
+    const paragrafosMantidos = [];
+    const paragrafosExcluidos = [];
+    
+    paragrafos.forEach(p => {
+      const excluido = filtrosAtivos.termosExcluir.some(termo => 
+        p.toLowerCase().includes(termo.toLowerCase())
+      );
+      if (excluido) paragrafosExcluidos.push(p);
+      else paragrafosMantidos.push(p);
+    });
+    
+    linhasMantidas = paragrafosMantidos.join('\n\n').split('\n');
+    linhasExcluidas.push(...paragrafosExcluidos.join('\n\n').split('\n'));
+  }
+  
+  textoFiltrado = linhasMantidas.join('\n').trim();
+  textoExcluido = linhasExcluidas.join('\n').trim();
+  
+  // Atualizar estatísticas
+  atualizarEstatisticas();
+  
+  // Mostrar resultado
+  verTextoMantido();
+}
+
+function atualizarEstatisticas() {
+  const lenOriginal = textoOriginal.length;
+  const lenMantido = textoFiltrado.length;
+  const lenExcluido = textoExcluido.length;
+  const reducao = lenOriginal > 0 ? Math.round((lenExcluido / lenOriginal) * 100) : 0;
+  
+  document.getElementById('stat-original').textContent = lenOriginal.toLocaleString('pt-BR') + ' caracteres';
+  document.getElementById('stat-mantido').textContent = lenMantido.toLocaleString('pt-BR') + ' caracteres';
+  document.getElementById('stat-excluido').textContent = lenExcluido.toLocaleString('pt-BR') + ' caracteres';
+  document.getElementById('stat-reducao').textContent = reducao + '%';
+}
+
+function verTextoMantido() {
+  const preview = document.getElementById('preview-filtros');
+  if (!textoFiltrado) {
+    preview.innerHTML = '<div class="text-muted fs11" style="text-align:center;padding:40px">Nenhum texto filtrado ainda.</div>';
+    return;
+  }
+  preview.innerHTML = '';
+  const pre = document.createElement('pre');
+  pre.style.cssText = 'white-space:pre-wrap;font-family:monospace;font-size:11px;line-height:1.6;margin:0';
+  pre.textContent = textoFiltrado;
+  preview.appendChild(pre);
+}
+
+function verTextoExcluido() {
+  const preview = document.getElementById('preview-filtros');
+  if (!textoExcluido) {
+    preview.innerHTML = '<div class="text-muted fs11" style="text-align:center;padding:40px">Nenhum texto excluído.</div>';
+    return;
+  }
+  preview.innerHTML = '';
+  const pre = document.createElement('pre');
+  pre.style.cssText = 'white-space:pre-wrap;font-family:monospace;font-size:11px;line-height:1.6;margin:0;color:var(--red);opacity:0.7';
+  pre.textContent = textoExcluido;
+  preview.appendChild(pre);
+}
+
+function exportarFiltrado() {
+  if (!textoFiltrado) { alert('Aplique os filtros primeiro.'); return; }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([textoFiltrado], { type: 'text/plain;charset=utf-8' }));
+  a.download = `filtrado-${Date.now()}.txt`;
+  a.click();
+}
+
+function usarFiltradoNaIA() {
+  if (!textoFiltrado) { alert('Aplique os filtros primeiro.'); return; }
+  document.getElementById('txt-processo').value = textoFiltrado;
+  mudarAba('processar', document.querySelector('.tab-btn'));
+  alert('✅ Texto filtrado carregado na aba Processar! Agora você pode gerar a peça com menos tokens.');
+}
+
+// ══════════════════════════════════════════════════════
+//  SELEÇÃO INTELIGENTE DE JURISPRUDÊNCIA
+// ══════════════════════════════════════════════════════
+async function selecionarEmentasInteligente() {
+  const texto = document.getElementById('txt-processo').value.trim();
+  if (!texto) { alert('Cole o texto do processo primeiro.'); return; }
+  if (ementas.length === 0) { alert('Nenhuma ementa cadastrada.'); return; }
+  
+  const kr = getChaveResumo();
+  const kg = getChaveGeracao();
+  const chave = kg || kr;
+  
+  if (!chave) {
+    alert('Configure uma chave de API para usar seleção inteligente.');
+    return;
+  }
+  
+  try {
+    atualizarResultado('⏳ Analisando ementas e selecionando as mais relevantes...');
+    
+    const ementasTexto = ementas.map((e, i) => 
+      `[${i}] ${e.titulo} (${e.categoria})\n${e.texto.substring(0, 300)}...`
+    ).join('\n\n');
+    
+    const prompt = `Analise o caso abaixo e selecione os números das 3 ementas mais relevantes para fundamentar a peça jurídica.
+
+CASO:
+${texto.substring(0, 2000)}
+
+EMENTAS DISPONÍVEIS:
+${ementasTexto}
+
+Responda APENAS com os números das ementas mais relevantes, separados por vírgula (ex: 0,2,5).`;
+
+    const msgs = [
+      { role: 'system', content: 'Você é um assistente jurídico especializado em selecionar jurisprudência relevante.' },
+      { role: 'user', content: prompt }
+    ];
+    
+    const resposta = await chamarIA(chave, msgs);
+    const indices = resposta.match(/\d+/g)?.map(n => parseInt(n)) || [];
+    
+    // Limpar seleção anterior
+    emsSelected.clear();
+    
+    // Selecionar as ementas indicadas
+    indices.forEach(i => {
+      if (i < ementas.length) {
+        emsSelected.add(ementas[i].id);
+      }
+    });
+    
+    renderEmentas();
+    atualizarInfoEmentas();
+    
+    atualizarResultado(`✅ ${emsSelected.size} ementa(s) selecionada(s) automaticamente! Confira na aba Ementas.`);
+    
+  } catch(e) {
+    atualizarResultado('❌ Erro na seleção inteligente: ' + e.message);
+  }
+}
+
+// Adicionar botão de seleção inteligente na área de jurisprudência
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    const jurisArea = document.getElementById('juris-area');
+    if (jurisArea) {
+      const btnInteligente = document.createElement('button');
+      btnInteligente.className = 'btn btn-purple btn-full';
+      btnInteligente.style.marginTop = '8px';
+      btnInteligente.innerHTML = '🧠 Selecionar Ementas Automaticamente (IA)';
+      btnInteligente.onclick = selecionarEmentasInteligente;
+      jurisArea.appendChild(btnInteligente);
+    }
+  }, 500);
+});
+
+// ══════════════════════════════════════════════════════
+//  EXTRAÇÃO INTELIGENTE DE TRECHOS DE EMENTAS
+// ══════════════════════════════════════════════════════
+async function extrairTrechosRelevantes(ementa, contexto) {
+  const kr = getChaveResumo();
+  if (!kr) return ementa.texto; // Se não tem chave, retorna texto completo
+  
+  try {
+    const prompt = `Extraia APENAS os trechos mais relevantes da ementa abaixo para o seguinte contexto jurídico. Mantenha citações literais e a fonte original.
+
+CONTEXTO:
+${contexto.substring(0, 500)}

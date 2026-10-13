@@ -1,0 +1,303 @@
+=== CONTEXTO ===
+Projeto: Assistente45by
+Fatia: 11 de 15
+Linhas originais: 2964 até 3259
+Tipo: function
+Funções/classes: importarBackup, file, texto, backup, criptografar, key, encrypted, descriptografar
+================
+
+async function importarBackup(input) {
+  const file = input.files[0];
+  input.value = '';
+  if (!file) return;
+  
+  try {
+    const texto = await file.text();
+    const backup = JSON.parse(texto);
+    
+    if (!backup.versao || !backup.dados) {
+      throw new Error('Arquivo de backup inválido');
+    }
+    
+    if (!confirm('⚠️ Isso substituirá TODOS os dados atuais. Deseja continuar?')) {
+      return;
+    }
+    
+    // Restaurar dados
+    ementas = backup.dados.ementas || [];
+    templates = backup.dados.templates || [];
+    historico = backup.dados.historico || [];
+    acoesCustom = backup.dados.acoesCustom || [];
+    filtrosAtivos = backup.dados.filtros || filtrosAtivos;
+    formatacaoAtual = backup.dados.formatacao || formatacaoAtual;
+    
+    // Restaurar configurações
+    if (backup.dados.config) {
+      effortLevel = backup.dados.config.effort || 3;
+      verbosity = backup.dados.config.verbosity || 'longa';
+      templateAtivo = backup.dados.config.templateAtivo || null;
+    }
+    
+    // Restaurar chaves (opcional)
+    if (backup.dados.chaves && confirm('Deseja restaurar também as chaves de API?')) {
+      document.getElementById('key-resumo').value = backup.dados.chaves.resumo || '';
+      document.getElementById('key-geracao').value = backup.dados.chaves.geracao || '';
+      document.getElementById('modelo-geracao').value = backup.dados.chaves.modelo || '';
+      document.getElementById('prompt-global').value = backup.dados.chaves.promptGlobal || '';
+      salvarChaves();
+    }
+    
+    // Salvar tudo
+    saveLS('aj_ementas', ementas);
+    saveLS('aj_templates', templates);
+    saveLS('aj_historico', historico);
+    saveLS('aj_acoes_custom', acoesCustom);
+    saveLS('aj_filtros', filtrosAtivos);
+    saveLS('aj_formatacao', formatacaoAtual);
+    saveLS('aj_effort', effortLevel);
+    saveLS('aj_verbosity', verbosity);
+    saveLS('aj_template_ativo', templateAtivo);
+    
+    // Sincronizar com IndexedDB
+    await sincronizarComDB();
+    
+    // Atualizar interface
+    renderEmentas();
+    renderTemplates();
+    renderHistorico();
+    renderAcoes();
+    renderAcoesCustomGrid();
+    atualizarEstatisticas();
+    
+    alert('✅ Backup restaurado com sucesso! Recarregue a página para aplicar todas as mudanças.');
+    
+  } catch(e) {
+    alert('❌ Erro ao importar backup: ' + e.message);
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  CRIPTOGRAFIA SIMPLES (Base64 + XOR)
+// ══════════════════════════════════════════════════════
+function criptografar(texto, senha) {
+  const key = senha.split('').map(c => c.charCodeAt(0));
+  const encrypted = texto.split('').map((c, i) => {
+    return String.fromCharCode(c.charCodeAt(0) ^ key[i % key.length]);
+  }).join('');
+  return btoa(encrypted);
+}
+
+function descriptografar(textoCripto, senha) {
+  const encrypted = atob(textoCripto);
+  const key = senha.split('').map(c => c.charCodeAt(0));
+  return encrypted.split('').map((c, i) => {
+    return String.fromCharCode(c.charCodeAt(0) ^ key[i % key.length]);
+  }).join('');
+}
+
+async function exportarBackupCriptografado() {
+  const senha = prompt('Digite uma senha para criptografar o backup:');
+  if (!senha) return;
+  
+  const senhaConfirm = prompt('Confirme a senha:');
+  if (senha !== senhaConfirm) {
+    alert('❌ Senhas não coincidem!');
+    return;
+  }
+  
+  try {
+    const backup = {
+      versao: '2.0',
+      timestamp: new Date().toISOString(),
+      dados: {
+        ementas, templates, historico, acoesCustom,
+        filtros: filtrosAtivos,
+        formatacao: formatacaoAtual
+      }
+    };
+    
+    const json = JSON.stringify(backup);
+    const encrypted = criptografar(json, senha);
+    
+    const blob = new Blob([encrypted], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `backup-criptografado-${Date.now()}.enc`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    alert('✅ Backup criptografado exportado! Guarde a senha em local seguro.');
+  } catch(e) {
+    alert('❌ Erro: ' + e.message);
+  }
+}
+
+async function importarBackupCriptografado(input) {
+  const file = input.files[0];
+  input.value = '';
+  if (!file) return;
+  
+  const senha = prompt('Digite a senha do backup:');
+  if (!senha) return;
+  
+  try {
+    const encrypted = await file.text();
+    const json = descriptografar(encrypted, senha);
+    const backup = JSON.parse(json);
+    
+    if (!confirm('⚠️ Isso substituirá todos os dados. Continuar?')) return;
+    
+    ementas = backup.dados.ementas || [];
+    templates = backup.dados.templates || [];
+    historico = backup.dados.historico || [];
+    acoesCustom = backup.dados.acoesCustom || [];
+    filtrosAtivos = backup.dados.filtros || filtrosAtivos;
+    formatacaoAtual = backup.dados.formatacao || formatacaoAtual;
+    
+    saveLS('aj_ementas', ementas);
+    saveLS('aj_templates', templates);
+    saveLS('aj_historico', historico);
+    saveLS('aj_acoes_custom', acoesCustom);
+    
+    await sincronizarComDB();
+    
+    renderEmentas();
+    renderTemplates();
+    renderHistorico();
+    renderAcoes();
+    
+    alert('✅ Backup restaurado!');
+  } catch(e) {
+    alert('❌ Senha incorreta ou arquivo corrompido!');
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  EXPORTAÇÕES INDIVIDUAIS
+// ══════════════════════════════════════════════════════
+function exportarEmentas() {
+  const json = JSON.stringify(ementas, null, 2);
+  baixarJSON(json, `ementas-${Date.now()}.json`);
+}
+
+function exportarTemplates() {
+  const json = JSON.stringify(templates, null, 2);
+  baixarJSON(json, `templates-${Date.now()}.json`);
+}
+
+function exportarHistorico() {
+  const json = JSON.stringify(historico, null, 2);
+  baixarJSON(json, `historico-${Date.now()}.json`);
+}
+
+function exportarAcoes() {
+  const json = JSON.stringify(acoesCustom, null, 2);
+  baixarJSON(json, `acoes-${Date.now()}.json`);
+}
+
+function baixarJSON(json, filename) {
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ══════════════════════════════════════════════════════
+//  ESTATÍSTICAS
+// ══════════════════════════════════════════════════════
+function atualizarEstatisticas() {
+  document.getElementById('stat-ementas-count').textContent = ementas.length;
+  document.getElementById('stat-templates-count').textContent = templates.length;
+  document.getElementById('stat-historico-count').textContent = historico.length;
+  document.getElementById('stat-acoes-count').textContent = acoesCustom.length;
+  
+  // Calcular espaço usado
+  const tamanhoTotal = JSON.stringify({
+    ementas, templates, historico, acoesCustom, filtrosAtivos, formatacaoAtual
+  }).length;
+  
+  const kb = (tamanhoTotal / 1024).toFixed(2);
+  document.getElementById('stat-espaco').textContent = kb + ' KB';
+}
+
+// Atualizar estatísticas quando mudar de aba
+const mudarAbaOriginal = window.mudarAba;
+window.mudarAba = function(id, btn) {
+  mudarAbaOriginal(id, btn);
+  if (id === 'backup') {
+    atualizarEstatisticas();
+  }
+};
+
+// ══════════════════════════════════════════════════════
+//  INTEGRAÇÃO GOOGLE DRIVE
+// ══════════════════════════════════════════════════════
+function salvarConfigDrive() {
+  const folder = document.getElementById('api-drive-folder').value.trim();
+  const token = document.getElementById('api-drive-token').value.trim();
+  
+  saveLS('aj_drive_folder', folder);
+  saveLS('aj_drive_token', token);
+  
+  alert('✅ Configuração do Drive salva!');
+}
+
+async function testarDrive() {
+  const token = document.getElementById('api-drive-token').value.trim();
+  if (!token) {
+    alert('Configure o token primeiro.');
+    return;
+  }
+  
+  try {
+    const resp = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (!resp.ok) throw new Error('Token inválido');
+    
+    const data = await resp.json();
+    alert(`✅ Conectado como: ${data.user.emailAddress}`);
+  } catch(e) {
+    alert('❌ Erro: ' + e.message);
+  }
+}
+
+async function enviarParaDrive(nomeArquivo, conteudo, mimeType) {
+  const token = loadLS('aj_drive_token', '');
+  const folderId = loadLS('aj_drive_folder', '');
+  
+  if (!token) {
+    alert('Configure o Google Drive primeiro na aba Backup.');
+    return;
+  }
+  
+  try {
+    const metadata = {
+      name: nomeArquivo,
+      mimeType: mimeType
+    };
+    
+    if (folderId) metadata.parents = [folderId];
+    
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', new Blob([conteudo], { type: mimeType }));
+    
+    const resp = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: form
+    });
+    
+    if (!resp.ok) throw new Error('Erro ao enviar');
+    
+    alert('✅ Arquivo enviado para o Drive!');
+  } catch(e) {
+    alert('❌ Erro ao enviar: ' + e.message);
+  }
+}

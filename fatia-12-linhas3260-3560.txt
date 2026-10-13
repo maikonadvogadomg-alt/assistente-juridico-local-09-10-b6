@@ -1,0 +1,308 @@
+=== CONTEXTO ===
+Projeto: Assistente45by
+Fatia: 12 de 15
+Linhas originais: 3260 até 3560
+Tipo: html
+Funções/classes: salvarConfigAPI, url, header, method, testarAPICustom, url, header, headers
+================
+
+// ══════════════════════════════════════════════════════
+//  API PERSONALIZADA
+// ══════════════════════════════════════════════════════
+function salvarConfigAPI() {
+  const url = document.getElementById('api-custom-url').value.trim();
+  const header = document.getElementById('api-custom-header').value.trim();
+  const method = document.getElementById('api-custom-method').value;
+  
+  saveLS('aj_api_url', url);
+  saveLS('aj_api_header', header);
+  saveLS('aj_api_method', method);
+  
+  alert('✅ Configuração da API salva!');
+}
+
+async function testarAPICustom() {
+  const url = document.getElementById('api-custom-url').value.trim();
+  const header = document.getElementById('api-custom-header').value.trim();
+  
+  if (!url) {
+    alert('Configure a URL primeiro.');
+    return;
+  }
+  
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (header) headers['Authorization'] = header;
+    
+    const resp = await fetch(url, {
+      method: 'GET',
+      headers: headers
+    });
+    
+    if (resp.ok) {
+      alert('✅ API respondeu com sucesso!');
+    } else {
+      alert(`⚠️ API respondeu com status ${resp.status}`);
+    }
+  } catch(e) {
+    alert('❌ Erro: ' + e.message);
+  }
+}
+
+async function enviarParaAPI(dados) {
+  const url = loadLS('aj_api_url', '');
+  const header = loadLS('aj_api_header', '');
+  const method = loadLS('aj_api_method', 'POST');
+  
+  if (!url) {
+    alert('Configure a API personalizada primeiro na aba Backup.');
+    return;
+  }
+  
+  try {
+    const headers = { 'Content-Type': 'application/json' };
+    if (header) headers['Authorization'] = header;
+    
+    const resp = await fetch(url, {
+      method: method,
+      headers: headers,
+      body: JSON.stringify(dados)
+    });
+    
+    if (!resp.ok) throw new Error(`Status ${resp.status}`);
+    
+    alert('✅ Documento enviado via API!');
+  } catch(e) {
+    alert('❌ Erro ao enviar: ' + e.message);
+  }
+}
+
+// Adicionar botões de envio na seção de resultado
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    const secaoResultado = document.getElementById('secao-resultado');
+    if (secaoResultado) {
+      const btnRow = secaoResultado.querySelector('.row');
+      if (btnRow) {
+        const btnDrive = document.createElement('button');
+        btnDrive.className = 'btn btn-blue';
+        btnDrive.innerHTML = '☁️ Enviar Drive';
+        btnDrive.onclick = () => {
+          if (!resultado) return;
+          enviarParaDrive(`documento-${Date.now()}.txt`, resultado, 'text/plain');
+        };
+        
+        const btnAPI = document.createElement('button');
+        btnAPI.className = 'btn btn-cyan';
+        btnAPI.innerHTML = '🌐 Enviar API';
+        btnAPI.onclick = () => {
+          if (!resultado) return;
+          enviarParaAPI({
+            tipo: 'documento_juridico',
+            conteudo: resultado,
+            timestamp: new Date().toISOString()
+          });
+        };
+        
+        btnRow.appendChild(btnDrive);
+        btnRow.appendChild(btnAPI);
+      }
+    }
+  }, 1000);
+});
+
+// ══════════════════════════════════════════════════════
+//  LIMPEZA DE DADOS
+// ══════════════════════════════════════════════════════
+async function limparTodosDados() {
+  if (!confirm('⚠️ ATENÇÃO: Isso apagará TODOS os dados permanentemente!\n\nDeseja continuar?')) {
+    return;
+  }
+  
+  if (prompt('Digite "CONFIRMAR" para apagar tudo:') !== 'CONFIRMAR') {
+    return;
+  }
+  
+  try {
+    // Limpar localStorage
+    localStorage.clear();
+    
+    // Limpar IndexedDB
+    if (db) {
+      const stores = ['documentos', 'ementas', 'templates', 'config', 'historico'];
+      for (const store of stores) {
+        const transaction = db.transaction([store], 'readwrite');
+        const objectStore = transaction.objectStore(store);
+        objectStore.clear();
+      }
+    }
+    
+    // Resetar variáveis
+    ementas = [];
+    templates = [];
+    historico = [];
+    acoesCustom = [];
+    emsSelected.clear();
+    
+    alert('✅ Todos os dados foram apagados. Recarregue a página.');
+    location.reload();
+  } catch(e) {
+    alert('❌ Erro: ' + e.message);
+  }
+}
+
+function limparCache() {
+  if ('caches' in window) {
+    caches.keys().then(names => {
+      names.forEach(name => caches.delete(name));
+    });
+  }
+  alert('✅ Cache limpo!');
+}
+
+function resetarConfiguracoes() {
+  if (!confirm('Resetar todas as configurações para o padrão?')) return;
+  
+  effortLevel = 3;
+  verbosity = 'longa';
+  templateAtivo = null;
+  filtrosAtivos = {
+    regexManter: [],
+    regexExcluir: [],
+    termosManter: [],
+    termosExcluir: [],
+    limparOCR: true,
+    limparMarkdown: true
+  };
+  formatacaoAtual = {
+    fonte: 'Times New Roman',
+    tamanho: 12,
+    bold: false,
+    italic: false,
+    underline: false,
+    alinhamento: 'justify',
+    recuo: 4,
+    espacamento: 1.5
+  };
+  
+  saveLS('aj_effort', effortLevel);
+  saveLS('aj_verbosity', verbosity);
+  saveLS('aj_template_ativo', null);
+  saveLS('aj_filtros', filtrosAtivos);
+  saveLS('aj_formatacao', formatacaoAtual);
+  
+  alert('✅ Configurações resetadas! Recarregue a página.');
+}
+
+// ══════════════════════════════════════════════════════
+//  AUTO-SAVE MELHORADO
+// ══════════════════════════════════════════════════════
+// Interceptar todas as funções de salvamento para acionar auto-save
+const salvarEmentaOriginal = window.salvarEmenta;
+window.salvarEmenta = function() {
+  salvarEmentaOriginal();
+  agendarAutoSave();
+};
+
+const salvarAcaoOriginal = window.salvarAcao;
+window.salvarAcao = function() {
+  salvarAcaoOriginal();
+  agendarAutoSave();
+};
+
+const confirmarSalvarTemplateOriginal = window.confirmarSalvarTemplate;
+window.confirmarSalvarTemplate = function() {
+  confirmarSalvarTemplateOriginal();
+  agendarAutoSave();
+};
+
+// Carregar configurações de API ao iniciar
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    const driveFolder = loadLS('aj_drive_folder', '');
+    const driveToken = loadLS('aj_drive_token', '');
+    const apiUrl = loadLS('aj_api_url', '');
+    const apiHeader = loadLS('aj_api_header', '');
+    const apiMethod = loadLS('aj_api_method', 'POST');
+    
+    if (document.getElementById('api-drive-folder')) {
+      document.getElementById('api-drive-folder').value = driveFolder;
+      document.getElementById('api-drive-token').value = driveToken;
+      document.getElementById('api-custom-url').value = apiUrl;
+      document.getElementById('api-custom-header').value = apiHeader;
+      document.getElementById('api-custom-method').value = apiMethod;
+    }
+  }, 1500);
+});
+
+console.log('✅ Parte 3/4 carregada: Backup + IndexedDB + Integrações');
+
+// ══════════════════════════════════════════════════════
+//  PARTE 4/4 - ACESSO À INTERNET + PWA + FINALIZAÇÕES
+// ══════════════════════════════════════════════════════
+
+// ── ACESSO À INTERNET ──
+let internetAtivo = false;
+let apiInternetConfig = {
+  provider: 'serper', // serper, serpapi, brave, custom
+  apiKey: '',
+  customUrl: ''
+};
+
+// Carregar config de internet
+window.addEventListener('DOMContentLoaded', () => {
+  const config = loadLS('aj_internet_config', {});
+  apiInternetConfig = { ...apiInternetConfig, ...config };
+  internetAtivo = loadLS('aj_internet_ativo', false);
+  
+  criarAbaInternet();
+  setTimeout(() => carregarConfigInternet(), 2000);
+});
+
+function criarAbaInternet() {
+  // Adicionar aba
+  const tabsContainer = document.querySelector('.tabs');
+  const btnInternet = document.createElement('button');
+  btnInternet.className = 'tab-btn';
+  btnInternet.id = 'tab-internet-btn';
+  btnInternet.innerHTML = '🌐 Internet';
+  btnInternet.onclick = function() { mudarAba('internet', this); };
+  tabsContainer.appendChild(btnInternet);
+  
+  // Criar painel
+  const content = document.querySelector('.content');
+  const paneInternet = document.createElement('div');
+  paneInternet.className = 'tab-pane';
+  paneInternet.id = 'pane-internet';
+  paneInternet.innerHTML = `
+    <div class="section-title">🌐 Acesso à Internet</div>
+    <div class="fs11 text-muted" style="margin-bottom:16px">
+      Configure APIs de busca para que a IA possa pesquisar jurisprudência, legislação e informações atualizadas na internet.
+    </div>
+
+    <!-- Toggle Internet -->
+    <div class="card" style="background:var(--bg3)">
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <div class="card-title" style="margin:0">Acesso à Internet</div>
+          <div class="fs10 text-muted">Permite que a IA busque informações online</div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="toggle-internet" onchange="toggleInternet()" style="width:20px;height:20px">
+          <span class="fs11" id="status-internet">Desativado</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Configuração de Providers -->
+    <div class="section-title">🔌 Provedor de Busca</div>
+    
+    <div class="card">
+      <div class="config-label">Selecione o Provedor</div>
+      <select id="internet-provider" class="inp" style="width:100%;margin-bottom:10px" onchange="salvarConfigInternet()">
+        <option value="serper">Serper API (Recomendado - 2500 buscas grátis)</option>
+        <option value="serpapi">SerpAPI (100 buscas grátis/mês)</option>
+        <option value="brave">Brave Search API</option>
+        <option value="tavily">Tavily AI Search</option>
+        <option value="custom">API Personalizada</option>
+      </select>

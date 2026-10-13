@@ -1,0 +1,305 @@
+=== CONTEXTO ===
+Projeto: Assistente45by
+Fatia: 13 de 15
+Linhas originais: 3561 até 3858
+Tipo: html
+Funções/classes: carregarConfigInternet, provider, apiKey, customUrl, toggle, autoSearch, jurisprudencia, numResults
+================
+
+      <div class="config-label">Chave de API</div>
+      <input class="inp" type="password" id="internet-api-key" placeholder="Cole sua chave de API aqui" style="width:100%;margin-bottom:10px" oninput="salvarConfigInternet()">
+      
+      <div id="internet-custom-url-field" class="hidden">
+        <div class="config-label">URL Personalizada</div>
+        <input class="inp" type="text" id="internet-custom-url" placeholder="https://api.exemplo.com/search?q={query}" style="width:100%;margin-bottom:10px" oninput="salvarConfigInternet()">
+      </div>
+
+      <div class="fs10 text-muted" style="margin-bottom:10px">
+        <strong>Como obter chaves gratuitas:</strong><br>
+        • <strong>Serper:</strong> <a href="https://serper.dev" target="_blank" style="color:var(--blue)">serper.dev</a> - 2500 buscas grátis<br>
+        • <strong>SerpAPI:</strong> <a href="https://serpapi.com" target="_blank" style="color:var(--blue)">serpapi.com</a> - 100/mês grátis<br>
+        • <strong>Brave:</strong> <a href="https://brave.com/search/api/" target="_blank" style="color:var(--blue)">brave.com/search/api</a><br>
+        • <strong>Tavily:</strong> <a href="https://tavily.com" target="_blank" style="color:var(--blue)">tavily.com</a>
+      </div>
+
+      <div class="row" style="gap:6px">
+        <button class="btn btn-blue" onclick="testarBuscaInternet()">🧪 Testar Busca</button>
+        <button class="btn btn-ghost" onclick="salvarConfigInternet()">💾 Salvar</button>
+      </div>
+    </div>
+
+    <!-- Busca Manual -->
+    <div class="section-title">🔍 Busca Manual</div>
+    <div class="card">
+      <div class="config-label">Pesquisar na Internet</div>
+      <div class="row" style="gap:6px;margin-bottom:10px">
+        <input class="inp" type="text" id="busca-manual-input" placeholder="Ex: jurisprudência STJ responsabilidade civil médica" style="flex:1">
+        <button class="btn btn-amber" onclick="buscarManual()">🔍 Buscar</button>
+      </div>
+      
+      <div id="resultados-busca" class="hidden" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;max-height:400px;overflow-y:auto">
+        <!-- Resultados aparecem aqui -->
+      </div>
+    </div>
+
+    <!-- Configurações Avançadas -->
+    <div class="section-title">⚙️ Configurações Avançadas</div>
+    <div class="card">
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer">
+        <input type="checkbox" id="internet-auto-search" onchange="salvarConfigInternet()">
+        <span class="fs11">Buscar automaticamente ao gerar minutas</span>
+      </label>
+      
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer">
+        <input type="checkbox" id="internet-jurisprudencia" checked onchange="salvarConfigInternet()">
+        <span class="fs11">Priorizar resultados de tribunais e jurisprudência</span>
+      </label>
+
+      <div class="config-label">Número de resultados por busca</div>
+      <input type="number" id="internet-num-results" min="3" max="10" value="5" class="inp" style="width:100px" onchange="salvarConfigInternet()">
+    </div>
+
+    <div style="height:30px"></div>
+  `;
+  
+  content.appendChild(paneInternet);
+}
+
+function carregarConfigInternet() {
+  const provider = document.getElementById('internet-provider');
+  const apiKey = document.getElementById('internet-api-key');
+  const customUrl = document.getElementById('internet-custom-url');
+  const toggle = document.getElementById('toggle-internet');
+  const autoSearch = document.getElementById('internet-auto-search');
+  const jurisprudencia = document.getElementById('internet-jurisprudencia');
+  const numResults = document.getElementById('internet-num-results');
+  
+  if (provider) provider.value = apiInternetConfig.provider || 'serper';
+  if (apiKey) apiKey.value = apiInternetConfig.apiKey || '';
+  if (customUrl) customUrl.value = apiInternetConfig.customUrl || '';
+  if (toggle) toggle.checked = internetAtivo;
+  if (autoSearch) autoSearch.checked = apiInternetConfig.autoSearch !== false;
+  if (jurisprudencia) jurisprudencia.checked = apiInternetConfig.jurisprudencia !== false;
+  if (numResults) numResults.value = apiInternetConfig.numResults || 5;
+  
+  atualizarStatusInternet();
+  
+  // Mostrar/ocultar campo de URL personalizada
+  if (provider) {
+    provider.addEventListener('change', () => {
+      const customField = document.getElementById('internet-custom-url-field');
+      if (customField) {
+        customField.classList.toggle('hidden', provider.value !== 'custom');
+      }
+    });
+    provider.dispatchEvent(new Event('change'));
+  }
+}
+
+function salvarConfigInternet() {
+  const provider = document.getElementById('internet-provider')?.value;
+  const apiKey = document.getElementById('internet-api-key')?.value.trim();
+  const customUrl = document.getElementById('internet-custom-url')?.value.trim();
+  const autoSearch = document.getElementById('internet-auto-search')?.checked;
+  const jurisprudencia = document.getElementById('internet-jurisprudencia')?.checked;
+  const numResults = parseInt(document.getElementById('internet-num-results')?.value) || 5;
+  
+  apiInternetConfig = {
+    provider: provider || 'serper',
+    apiKey: apiKey || '',
+    customUrl: customUrl || '',
+    autoSearch: autoSearch !== false,
+    jurisprudencia: jurisprudencia !== false,
+    numResults: numResults
+  };
+  
+  saveLS('aj_internet_config', apiInternetConfig);
+}
+
+function toggleInternet() {
+  internetAtivo = document.getElementById('toggle-internet').checked;
+  saveLS('aj_internet_ativo', internetAtivo);
+  atualizarStatusInternet();
+}
+
+function atualizarStatusInternet() {
+  const status = document.getElementById('status-internet');
+  if (status) {
+    status.textContent = internetAtivo ? 'Ativado' : 'Desativado';
+    status.style.color = internetAtivo ? 'var(--green)' : 'var(--muted)';
+  }
+}
+
+async function buscarNaInternet(query) {
+  if (!internetAtivo || !apiInternetConfig.apiKey) {
+    throw new Error('Configure o acesso à internet primeiro');
+  }
+  
+  const provider = apiInternetConfig.provider;
+  const apiKey = apiInternetConfig.apiKey;
+  const numResults = apiInternetConfig.numResults || 5;
+  
+  try {
+    let resultados = [];
+    
+    if (provider === 'serper') {
+      const resp = await fetch('https://google.serper.dev/search', {
+        method: 'POST',
+        headers: {
+          'X-API-KEY': apiKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          q: query,
+          num: numResults,
+          gl: 'br',
+          hl: 'pt'
+        })
+      });
+      
+      if (!resp.ok) throw new Error('Erro na busca');
+      const data = await resp.json();
+      
+      resultados = (data.organic || []).map(r => ({
+        titulo: r.title,
+        snippet: r.snippet,
+        url: r.link
+      }));
+      
+    } else if (provider === 'serpapi') {
+      const url = `https://serpapi.com/search?q=${encodeURIComponent(query)}&api_key=${apiKey}&num=${numResults}&gl=br&hl=pt`;
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error('Erro na busca');
+      const data = await resp.json();
+      
+      resultados = (data.organic_results || []).map(r => ({
+        titulo: r.title,
+        snippet: r.snippet,
+        url: r.link
+      }));
+      
+    } else if (provider === 'brave') {
+      const resp = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${numResults}`, {
+        headers: {
+          'X-Subscription-Token': apiKey,
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (!resp.ok) throw new Error('Erro na busca');
+      const data = await resp.json();
+      
+      resultados = (data.web?.results || []).map(r => ({
+        titulo: r.title,
+        snippet: r.description,
+        url: r.url
+      }));
+      
+    } else if (provider === 'tavily') {
+      const resp = await fetch('https://api.tavily.com/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          api_key: apiKey,
+          query: query,
+          search_depth: 'advanced',
+          max_results: numResults
+        })
+      });
+      
+      if (!resp.ok) throw new Error('Erro na busca');
+      const data = await resp.json();
+      
+      resultados = (data.results || []).map(r => ({
+        titulo: r.title,
+        snippet: r.content,
+        url: r.url
+      }));
+      
+    } else if (provider === 'custom') {
+      const url = apiInternetConfig.customUrl.replace('{query}', encodeURIComponent(query));
+      const resp = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${apiKey}` }
+      });
+      
+      if (!resp.ok) throw new Error('Erro na busca');
+      const data = await resp.json();
+      
+      // Assumir formato padrão ou adaptar conforme necessário
+      resultados = data.results || data.items || [];
+    }
+    
+    return resultados;
+    
+  } catch(e) {
+    throw new Error('Erro ao buscar: ' + e.message);
+  }
+}
+
+async function testarBuscaInternet() {
+  salvarConfigInternet();
+  
+  if (!apiInternetConfig.apiKey) {
+    alert('Configure a chave de API primeiro.');
+    return;
+  }
+  
+  try {
+    const resultados = await buscarNaInternet('STJ responsabilidade civil');
+    if (resultados.length > 0) {
+      alert(`✅ Busca funcionando! Encontrados ${resultados.length} resultados.`);
+    } else {
+      alert('⚠️ Busca funcionou mas não retornou resultados.');
+    }
+  } catch(e) {
+    alert('❌ Erro: ' + e.message);
+  }
+}
+
+async function buscarManual() {
+  const input = document.getElementById('busca-manual-input');
+  const query = input.value.trim();
+  
+  if (!query) {
+    alert('Digite algo para buscar.');
+    return;
+  }
+  
+  const container = document.getElementById('resultados-busca');
+  container.classList.remove('hidden');
+  container.innerHTML = '<div class="text-muted fs11">🔍 Buscando...</div>';
+  
+  try {
+    const resultados = await buscarNaInternet(query);
+    
+    if (resultados.length === 0) {
+      container.innerHTML = '<div class="text-muted fs11">Nenhum resultado encontrado.</div>';
+      return;
+    }
+    
+    container.innerHTML = '';
+    resultados.forEach((r, i) => {
+      const div = document.createElement('div');
+      div.style.cssText = 'padding:10px;border-bottom:1px solid var(--border);';
+      div.innerHTML = `
+        <div class="fs11" style="color:var(--amber2);font-weight:600;margin-bottom:4px">
+          ${i+1}. ${r.titulo}
+        </div>
+        <div class="fs10 text-muted" style="margin-bottom:4px">${r.snippet}</div>
+        <a href="${r.url}" target="_blank" class="fs10" style="color:var(--blue)">${r.url}</a>
+      `;
+      container.appendChild(div);
+    });
+    
+  } catch(e) {
+    container.innerHTML = `<div class="text-red fs11">❌ ${e.message}</div>`;
+  }
+}
+
+// Integrar busca automática na geração de minutas
+const executarComInternet = window.executar;
+window.executar = async function(acao, customPrompt) {
+  const texto = document.getElementById('txt-processo').value.trim();
+  if (!texto) { alert('Cole ou importe o texto do documento antes.'); return; }
