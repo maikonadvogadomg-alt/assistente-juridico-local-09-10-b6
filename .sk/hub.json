@@ -1,0 +1,38 @@
+{
+  "titulo": "Assistente-Juridico-local-09-10-b",
+  "arquivo": "index.html",
+  "itens": [
+    {
+      "path": "client/index.html",
+      "nome": "Assistente Jurídico",
+      "desc": "",
+      "on": true,
+      "icone": "client/icons/icon.svg"
+    },
+    {
+      "path": "client/public/auditoria.html",
+      "nome": "Auditoria Master - Dr. MAIKON DA ROCHA CALDEIRA",
+      "desc": "",
+      "on": true,
+      "icone": "client/public/icon-192.png"
+    },
+    {
+      "path": "client/public/comparador.html",
+      "nome": "Comparador Jurídico — TJMG + BCB",
+      "desc": "",
+      "on": true,
+      "icone": "client/public/icon-192.png"
+    },
+    {
+      "path": "public/auditoria.html",
+      "nome": "Auditoria Financeira - Assistente Jurídico",
+      "desc": "",
+      "on": true,
+      "icone": ""
+    }
+  ],
+  "sub": "",
+  "logo": "",
+  "tema": "escuro",
+  "links": []
+}
